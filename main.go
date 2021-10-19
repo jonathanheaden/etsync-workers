@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	// "fmt"
+	"fmt"
 	"time"
   
   log "github.com/sirupsen/logrus"
@@ -31,5 +31,9 @@ func main() {
 	defer client.Disconnect(ctx)
 
   token := getstoretoken(storename, client)
-  registerbulkquery(storename, token)
+  statusurl,err := registerbulkquery(storename, token)
+  if err != nil {
+    log.Fatal(err)
+  }
+  fmt.Println(statusurl)
 }
