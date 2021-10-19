@@ -24,7 +24,6 @@ func getdatabases(client *mongo.Client) ([]string,error) {
 }
 
 func getstoretoken(storename string, client *mongo.Client) string {
-	fmt.Printf("token for %s", storename)
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	var doc bson.M
 	collection := client.Database("etync").Collection("shops")
