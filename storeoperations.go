@@ -1,13 +1,25 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
 )
+type BulkRequest struct {
+	Data struct {
+		BulkOperationRunQuery struct {
+			BulkOperation struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			} `json:"bulkOperation"`
+			UserErrors []string `json:"userErrors"`
+		} `json:"bulkOperationRunQuery"`
+	} `json:"data"`
+}
 
-func registerbulkquery(storeurl, token string) {
+func registerbulkquery(storeurl, token string) (string, error) {
 	url := fmt.Sprintf("https://%s/admin/api/2021-01/graphql.json", storeurl)
 	method := "POST"
 
@@ -18,7 +30,7 @@ func registerbulkquery(storeurl, token string) {
 
 	if err != nil {
 		fmt.Println(err)
-		return
+		return "",err
 	}
 	req.Header.Add("X-Shopify-Access-Token", token)
 	req.Header.Add("Content-Type", "application/json")
@@ -26,14 +38,22 @@ func registerbulkquery(storeurl, token string) {
 	res, err := client.Do(req)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return "",err
 	}
 	defer res.Body.Close()
-
+	var response BulkRequest 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return "",err
 	}
-	fmt.Println(string(body))
+	if err := json.Unmarshal(body, &response); err != nil {
+        return "",err
+    }
+	if response.Data.BulkOperationRunQuery.BulkOperation.Status == "CREATED" {
+		return response.Data.BulkOperationRunQuery.BulkOperation.ID, nil
+	} else {
+		errstring := strings.Join(response.Data.BulkOperationRunQuery.UserErrors,"\n")
+		return "", fmt.Errorf("%s",errstring)
+	}
 }

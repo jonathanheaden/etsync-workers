@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	// "fmt"
 	"time"
   
   log "github.com/sirupsen/logrus"
@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+  storename := "etsync.myshopify.com"
 	config, err := LoadConfig(".")
 	if err != nil {
 		log.Fatal("cannot load config:", err)
@@ -28,8 +29,7 @@ func main() {
 	}
 
 	defer client.Disconnect(ctx)
-  databaselist, err := getdatabases(client)
- 
-	fmt.Println(databaselist)
-  fmt.Printf("token %s", getstoretoken("etsync.myshopify.com", client))
+
+  token := getstoretoken(storename, client)
+  registerbulkquery(storename, token)
 }
