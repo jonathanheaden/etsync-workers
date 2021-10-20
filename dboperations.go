@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,7 +12,7 @@ import (
 	// "go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-func getdatabases(client *mongo.Client) ([]string,error) {
+func getdatabases(client *mongo.Client) ([]string, error) {
 	var dblist []string
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	dblist, err := client.ListDatabaseNames(ctx, bson.M{})
@@ -32,5 +32,5 @@ func getstoretoken(storename string, client *mongo.Client) string {
 		log.Warn(err)
 		return ""
 	}
-	return fmt.Sprintf("%v",doc["accessToken"])
+	return fmt.Sprintf("%v", doc["accessToken"])
 }
