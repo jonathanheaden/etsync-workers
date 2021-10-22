@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/mongo"
+	// "go.mongodb.org/mongo-driver/bson"
 )
 
 type BulkRequest struct {
@@ -50,7 +53,56 @@ type BulkRequestStatus struct {
 	} `json:"extensions"`
 }
 
-func registerbulkquery(storeurl, token, query string,) (string, error) {
+type ProductVariant struct {
+	DisplayName         string `json:"displayName"`
+	ID                  string `json:"id"`
+	InventoryManagement string `json:"inventoryManagement"`
+	InventoryItem       struct {
+		ID string `json:"id"`
+	} `json:"inventoryItem"`
+	Product  Product `json:"product"`
+	ParentID string  `json:"__parentId"`
+	Sku      string  `json:"sku`
+}
+
+type InventoryLevel struct {
+	Location struct {
+		Address struct {
+			Address1 string      `json:"address1"`
+			Address2 interface{} `json:"address2"`
+			City     string      `json:"city"`
+			Country  string      `json:"country"`
+		} `json:"address"`
+		ID string `json:"id"`
+	} `json:"location"`
+	Available   int       `json:"available"`
+	ID          string    `json:"id"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	InventoryID string    `json:"__parentId"`
+}
+
+type ShopifyItem struct {
+	Available   int    `json:"available"`
+	InventoryID string `json:"inventoryid"`
+	LocationID  string `json:"locationid"`
+	Parent      string `json:""parent"`
+	ParentID    string `json:"parentid"`
+	SKU         string `json:"sku"`
+	VariantID   string `json:variantid"`
+	VariantName string `json:variantname`
+}
+
+type Product struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+var (
+	productvariant ProductVariant
+	inventorylevel InventoryLevel
+)
+
+func registerbulkquery(storeurl, token, query string) (string, error) {
 	var response BulkRequest
 	url := fmt.Sprintf("https://%s/admin/api/2021-01/graphql.json", storeurl)
 	log.Info(fmt.Sprintf("sending request to %s", url))
@@ -60,7 +112,7 @@ func registerbulkquery(storeurl, token, query string,) (string, error) {
 	req, err := http.NewRequest(method, url, payload)
 
 	if err != nil {
-		log.Errorf("Error with http client: %v",err)
+		log.Errorf("Error with http client: %v", err)
 		return "", err
 	}
 	req.Header.Add("X-Shopify-Access-Token", token)
@@ -68,33 +120,33 @@ func registerbulkquery(storeurl, token, query string,) (string, error) {
 
 	res, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Error with http client request action: %v",err)
+		log.Errorf("Error with http client request action: %v", err)
 		return "", err
 	}
-	log.Info(fmt.Sprintf("response code %d",res.StatusCode))
+	log.Info(fmt.Sprintf("response code %d", res.StatusCode))
 
 	defer res.Body.Close()
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Errorf("Error reading response body: %v",err)
+		log.Errorf("Error reading response body: %v", err)
 		return "", err
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
-		log.Errorf("Error with response unmarshall: %v",err)
+		log.Errorf("Error with response unmarshall: %v", err)
 		return "", err
 	}
 
 	log.WithFields(log.Fields{
 		"Status": response.Data.BulkOperationRunQuery.BulkOperation.Status,
-		"ID": response.Data.BulkOperationRunQuery.BulkOperation.ID,
+		"ID":     response.Data.BulkOperationRunQuery.BulkOperation.ID,
 	}).Info("Response from Shopify Register Bulk Query operation")
-	
+
 	if response.Data.BulkOperationRunQuery.BulkOperation.Status == "CREATED" {
 		return response.Data.BulkOperationRunQuery.BulkOperation.ID, nil
 	} else {
 		errstring := strings.Join(response.Data.BulkOperationRunQuery.UserErrors, "\n")
-		log.Warnf("Errors contained in response: %v",err)
+		log.Warnf("Errors contained in response: %v", err)
 		return "", fmt.Errorf("%s", errstring)
 	}
 }
@@ -109,8 +161,8 @@ func getBulkRequestStatus(storeurl, token string) (string, string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, payload)
 	if err != nil {
-		log.Errorf("Error with http client: %v",err)
-		return "","", err
+		log.Errorf("Error with http client: %v", err)
+		return "", "", err
 	}
 	req.Header.Add("X-Shopify-Access-Token", token)
 	req.Header.Add("Content-Type", "application/json")
@@ -118,26 +170,26 @@ func getBulkRequestStatus(storeurl, token string) (string, string, error) {
 	res, err := client.Do(req)
 	if err != nil {
 		fmt.Println(err)
-		return "","", err
+		return "", "", err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Errorf("Error reading response body: %v",err)
-		return "","", err
+		log.Errorf("Error reading response body: %v", err)
+		return "", "", err
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return "","", err
+		return "", "", err
 	}
 	return response.Data.CurrentBulkOperation.Status, response.Data.CurrentBulkOperation.URL, nil
 }
 
 func getproductvariants(storeurl, token string) (string, error) {
-	query := "{\"query\":\"mutation {\\n  bulkOperationRunQuery(\\n   query: \\\"\\\"\\\"\\n    {\\n      products {\\n        edges {\\n          node {\\n            id,\\n            variants {\\n              edges {\\n                node {\\n                  displayName,\\n                  id,\\n                  inventoryManagement,\\n                  inventoryItem  {\\n                     id\\n                  },\\n                  product {\\n                    id,\\n                    title\\n                  }\\n                }\\n              }\\n            }\\n          }\\n        }\\n      }\\n    }\\n    \\\"\\\"\\\"\\n  ) {\\n    bulkOperation {\\n      id\\n      status\\n    }\\n    userErrors {\\n      field\\n      message\\n    }\\n  }\\n}\",\"variables\":{}}"
-	_,err := registerbulkquery(storeurl, token, query)
+	query := "{\"query\":\"mutation {\\n  bulkOperationRunQuery(\\n   query: \\\"\\\"\\\"\\n    {\\n      products {\\n        edges {\\n          node {\\n            id,\\n            variants {\\n              edges {\\n                node {\\n                  displayName,\\n                  id,\\n                  inventoryManagement,\\n                  inventoryItem  {\\n                     id\\n                  },\\n                  sku,\\n                  product {\\n                    id,\\n                    title\\n                  }\\n                }\\n              }\\n            }\\n          }\\n        }\\n      }\\n    }\\n    \\\"\\\"\\\"\\n  ) {\\n    bulkOperation {\\n      id\\n      status\\n    }\\n    userErrors {\\n      field\\n      message\\n    }\\n  }\\n}\",\"variables\":{}}"
+	_, err := registerbulkquery(storeurl, token, query)
 	if err != nil {
-		return "",err
+		return "", err
 	}
 	var url string
 	attempt := 1
@@ -148,14 +200,14 @@ func getproductvariants(storeurl, token string) (string, error) {
 			return "", err
 		}
 		log.WithFields(log.Fields{
-			"Status": statusurl,
+			"Status":  statusurl,
 			"retries": attempt,
 		}).Info()
 		// if the statusurl is returned then we should break out before the timed sleep
 		attempt = attempt + 1
 		if attempt > 12 {
 			log.Error("Exiting function as 4 minutes have expired")
-			return "",fmt.Errorf("Query exceeded 4 minute timeout")
+			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
 		time.Sleep(20 * time.Second)
 	}
@@ -164,9 +216,9 @@ func getproductvariants(storeurl, token string) (string, error) {
 
 func getinventorylevels(storeurl, token string) (string, error) {
 	query := "{\"query\":\"mutation {\\n  bulkOperationRunQuery(\\n   query: \\\"\\\"\\\"\\n   {\\n  inventoryItems {\\n    edges {\\n      node {\\n        id\\n        inventoryLevels {\\n          edges {\\n            node {\\n              location {\\n                address {\\n                  address1\\n                  address2\\n                  city\\n                  country\\n                }\\n                id\\n              }\\n              available\\n              id\\n              updatedAt\\n            }\\n\\n          }\\n        }\\n      }\\n    }\\n  }\\n  }\\n    \\\"\\\"\\\"\\n  ) {\\n    bulkOperation {\\n      id\\n      status\\n    }\\n    userErrors {\\n      field\\n      message\\n    }\\n  }\\n}\",\"variables\":{}}"
-	_,err := registerbulkquery(storeurl, token, query)
+	_, err := registerbulkquery(storeurl, token, query)
 	if err != nil {
-		return "",err
+		return "", err
 	}
 	var url string
 	attempt := 1
@@ -177,26 +229,104 @@ func getinventorylevels(storeurl, token string) (string, error) {
 			return "", err
 		}
 		log.WithFields(log.Fields{
-			"Status": statusurl,
+			"Status":  statusurl,
 			"retries": attempt,
 		}).Info()
 		// if the statusurl is returned then we should break out before the timed sleep
 		attempt = attempt + 1
 		if attempt > 12 {
 			log.Error("Exiting function as 4 minutes have expired")
-			return "",fmt.Errorf("Query exceeded 4 minute timeout")
+			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
-		time.Sleep(20 * time.Second)
+		if statusurl != "COMPLETED" {
+			time.Sleep(20 * time.Second)
+		}
 	}
 	return url, nil
 }
 
-func processinventorylevels(url, storename string)  error {
-	// download the JSONL file, parse and update the database
+func processinventorylevels(url, storename string, client *mongo.Client) error {
+
+	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
+	var Items []ShopifyItem
+	response, err := http.Get(url) //use package "net/http"
+
+	if err != nil {
+		log.Errorf("Error reading products: %v", err)
+		return err
+	}
+
+	defer response.Body.Close()
+
+	scanner := bufio.NewScanner(response.Body)
+	count := 0
+	for scanner.Scan() {
+		count++
+		log.Debug(fmt.Sprintf("Processing inventory file line %d", count))
+		if err := json.Unmarshal(scanner.Bytes(), &inventorylevel); err != nil {
+			log.Warn("Problem scanning line")
+			continue
+		}
+		if len(inventorylevel.InventoryID) > 0 {
+			item := ShopifyItem{
+				InventoryID: inventorylevel.InventoryID,
+				LocationID:  inventorylevel.Location.ID,
+				Available:   inventorylevel.Available,
+			}
+			Items = append(Items, item)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Errorf("Error reading input:", err)
+	}
+	if err := upsertstock(storename, Items, client); err != nil {
+		log.Errorf("Error with DB upsert %v", err)
+		return err
+	}
+	log.Info(fmt.Sprintf("Writing %d inventory levels to DB", len(Items)))
 	return nil
 }
 
-func processproductlevels(url, storename string)  error {
-	// download the JSONL file, parse and update the database
+func processproductlevels(url, storename string, client *mongo.Client) error {
+	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
+	var Items []ShopifyItem
+	response, err := http.Get(url) //use package "net/http"
+
+	if err != nil {
+		log.Errorf("Error reading products: %v", err)
+		return err
+	}
+
+	defer response.Body.Close()
+
+	scanner := bufio.NewScanner(response.Body)
+	count := 0
+	for scanner.Scan() {
+		count++
+		log.Debug(fmt.Sprintf("Processing products file line %d", count))
+		if err := json.Unmarshal(scanner.Bytes(), &productvariant); err != nil {
+			log.Warn("Problem scanning line")
+			continue
+		}
+		if productvariant.InventoryManagement == "SHOPIFY" {
+			item := ShopifyItem{
+				VariantName: productvariant.DisplayName,
+				VariantID:   productvariant.ID,
+				Parent:      productvariant.Product.Title,
+				ParentID:    productvariant.Product.ID,
+				InventoryID: productvariant.InventoryItem.ID,
+				SKU:         productvariant.Sku,
+			}
+			Items = append(Items, item)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Errorf("Error reading input:", err)
+	}
+	if err := upsertproduct(storename, Items, client); err != nil {
+		log.Errorf("Error with DB upsert %v", err)
+		return err
+	}
+	log.Info(fmt.Sprintf("Writing %d products to DB", len(Items)))
 	return nil
 }
