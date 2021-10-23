@@ -36,77 +36,37 @@ func getstoretoken(storename string, client *mongo.Client) string {
 	return fmt.Sprintf("%v", doc["accessToken"])
 }
 
-func upsertproduct(storename string, items []ShopifyItem, client *mongo.Client) error {
+func setstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 
-	productsCollection := client.Database("etync").Collection("products")
-	for _, item := range items {
-		log.WithFields(log.Fields{
-			"Store": storename,
-			"title": item.VariantName,
-			"SKU":   item.SKU,
-		}).Info("Adding record")
-		filter := bson.M{"SKU": item.SKU}
+	stockCollection := client.Database("etync").Collection("stock")
+	for _,item := range items {
+		itemtype := item.ItemType
+		item.ItemType = "shopify-stock-level"
+		filter := bson.M{"s_inventoryid": item.InventoryID}
 		update := bson.M{
-			"$set": bson.M{
-				"storename":      storename,
-				"s_title":        item.VariantName,
-				"s_id":           item.VariantID,
-				"s_inventory_id": item.InventoryID,
-				"s_product_id":   item.ParentID,
-				"s_product":      item.Parent,
-			},
+			"$set": item,
 		}
+
 		upsert := true
 		after := options.After
 		opt := options.FindOneAndUpdateOptions{
 			ReturnDocument: &after,
 			Upsert:         &upsert,
 		}
-		result := productsCollection.FindOneAndUpdate(ctx, filter, update, &opt)
-		if result.Err() != nil {
-			log.Errorf("Error inserting record %v Err: %v", item, result.Err())
-			return result.Err()
-		}
-		log.Info("Added record %v", result.Decode)
+
+	result := stockCollection.FindOneAndUpdate(ctx, filter, update, &opt)
+	if result.Err() != nil {
+		return nil
+	}
+	doc := bson.M{}
+	if err := result.Decode(&doc); err != nil {
+		log.Errorf("Problem decoding record for ", item.InventoryID)
+	}
+	log.WithFields(log.Fields{
+		"Kind": itemtype, 
+	}).Info(fmt.Sprintf("Upserted Doc %s",item.InventoryID))
 	}
 
-	log.Info("Completed insert for %d products", len(items))
-	return nil
-}
-
-func upsertstock(storename string, items []ShopifyItem, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-
-	inventoryCollection := client.Database("etync").Collection("inventory")
-	for _, item := range items {
-		log.WithFields(log.Fields{
-			"Store":          storename,
-			"s_inventory_id": item.InventoryID,
-		}).Info("Adding record")
-		filter := bson.M{"SKU": item.SKU}
-		update := bson.M{
-			"$set": bson.M{
-				"storename":      storename,
-				"s_location_id":  item.LocationID,
-				"s_curr_avail":   item.Available,
-				"s_inventory_id": item.InventoryID,
-			},
-		}
-		upsert := true
-		after := options.After
-		opt := options.FindOneAndUpdateOptions{
-			ReturnDocument: &after,
-			Upsert:         &upsert,
-		}
-		result := inventoryCollection.FindOneAndUpdate(ctx, filter, update, &opt)
-		if result.Err() != nil {
-			log.Errorf("Error inserting record %v Err: %v", item, result.Err())
-			return result.Err()
-		}
-		log.Info("Added record %v", result.Decode)
-	}
-
-	log.Info("Completed insert for %d products", len(items))
 	return nil
 }
