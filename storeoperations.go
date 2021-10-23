@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
+	
 	log "github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	// "go.mongodb.org/mongo-driver/bson"
 )
 
 type BulkRequest struct {
@@ -82,25 +82,22 @@ type InventoryLevel struct {
 }
 
 type ShopifyItem struct {
-	Available   int    `json:"available"`
-	InventoryID string `json:"inventoryid"`
-	LocationID  string `json:"locationid"`
-	Parent      string `json:""parent"`
-	ParentID    string `json:"parentid"`
-	SKU         string `json:"sku"`
-	VariantID   string `json:variantid"`
-	VariantName string `json:variantname`
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	ItemType    string             `bson:"itemtype"`
+	Available   int                `bson:"s_curr_stock,omitempty"`
+	InventoryID string             `bson:"s_inventory_id,omitempty"`
+	LocationID  string             `bson:"s_location_id,omitempty"`
+	Parent      string             `bson:"s_parent_product,omitempty"`
+	ParentID    string             `bson:"s_parent_product_id,omitempty"`
+	SKU         string             `bson:"sku,omitempty"`
+	VariantID   string             `bson:"s_variant_id,omitempty"`
+	VariantName string             `bson:"s_variant_name,omitempty`
 }
 
 type Product struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 }
-
-var (
-	productvariant ProductVariant
-	inventorylevel InventoryLevel
-)
 
 func registerbulkquery(storeurl, token, query string) (string, error) {
 	var response BulkRequest
@@ -249,6 +246,8 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
 	var Items []ShopifyItem
+	var inventorylevel InventoryLevel
+
 	response, err := http.Get(url) //use package "net/http"
 
 	if err != nil {
@@ -269,6 +268,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 		}
 		if len(inventorylevel.InventoryID) > 0 {
 			item := ShopifyItem{
+				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
 				LocationID:  inventorylevel.Location.ID,
 				Available:   inventorylevel.Available,
@@ -279,7 +279,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := upsertstock(storename, Items, client); err != nil {
+	if err := setstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}
@@ -290,6 +290,8 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 func processproductlevels(url, storename string, client *mongo.Client) error {
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
 	var Items []ShopifyItem
+	var productvariant ProductVariant
+
 	response, err := http.Get(url) //use package "net/http"
 
 	if err != nil {
@@ -310,11 +312,12 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 		}
 		if productvariant.InventoryManagement == "SHOPIFY" {
 			item := ShopifyItem{
+				InventoryID: productvariant.InventoryItem.ID,
+				ItemType:    "productvariant",
 				VariantName: productvariant.DisplayName,
 				VariantID:   productvariant.ID,
 				Parent:      productvariant.Product.Title,
 				ParentID:    productvariant.Product.ID,
-				InventoryID: productvariant.InventoryItem.ID,
 				SKU:         productvariant.Sku,
 			}
 			Items = append(Items, item)
@@ -323,10 +326,12 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := upsertproduct(storename, Items, client); err != nil {
+	if err := setstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}
 	log.Info(fmt.Sprintf("Writing %d products to DB", len(Items)))
 	return nil
 }
+
+// NOTE - should create a new object for each new shopify item to make sure there is no stale data
