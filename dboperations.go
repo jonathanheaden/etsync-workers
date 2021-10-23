@@ -84,7 +84,8 @@ func upsertstock(storename string, items []ShopifyItem, client *mongo.Client) er
 			"Store":          storename,
 			"s_inventory_id": item.InventoryID,
 		}).Info("Adding record")
-		filter := bson.M{"SKU": item.SKU}
+
+		filter := bson.M{"s_inventory_id": item.InventoryID}
 		update := bson.M{
 			"$set": bson.M{
 				"storename":      storename,
@@ -108,5 +109,40 @@ func upsertstock(storename string, items []ShopifyItem, client *mongo.Client) er
 	}
 
 	log.Info("Completed insert for %d products", len(items))
+	return nil
+}
+
+func setstock(storename string, items []ShopifyItem, client *mongo.Client) error {
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+
+	stockCollection := client.Database("etync").Collection("stock")
+	for _,item := range items {
+		itemtype := item.ItemType
+		item.ItemType = "shopify-stock-level"
+		filter := bson.M{"s_inventoryid": item.InventoryID}
+		update := bson.M{
+			"$set": item,
+		}
+
+		upsert := true
+		after := options.After
+		opt := options.FindOneAndUpdateOptions{
+			ReturnDocument: &after,
+			Upsert:         &upsert,
+		}
+
+	result := stockCollection.FindOneAndUpdate(ctx, filter, update, &opt)
+	if result.Err() != nil {
+		return nil
+	}
+	doc := bson.M{}
+	if err := result.Decode(&doc); err != nil {
+		log.Errorf("Problem decoding record for ", item.InventoryID)
+	}
+	log.WithFields(log.Fields{
+		"Kind": itemtype, 
+	}).Info(fmt.Sprintf("Upserted Doc %s",item.InventoryID))
+	}
+
 	return nil
 }
