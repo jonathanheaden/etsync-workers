@@ -279,7 +279,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := setstock(storename, Items, client); err != nil {
+	if err := setshopstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}
@@ -326,7 +326,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := setstock(storename, Items, client); err != nil {
+	if err := setshopstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}

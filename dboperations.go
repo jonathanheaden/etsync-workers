@@ -36,7 +36,7 @@ func getstoretoken(storename string, client *mongo.Client) string {
 	return fmt.Sprintf("%v", doc["accessToken"])
 }
 
-func setstock(storename string, items []ShopifyItem, client *mongo.Client) error {
+func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 
 	stockCollection := client.Database("etync").Collection("stock")
