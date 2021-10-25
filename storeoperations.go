@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	
+
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -82,16 +82,17 @@ type InventoryLevel struct {
 }
 
 type ShopifyItem struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty"`
-	ItemType    string             `bson:"itemtype"`
-	Available   int                `bson:"s_curr_stock,omitempty"`
-	InventoryID string             `bson:"s_inventory_id,omitempty"`
-	LocationID  string             `bson:"s_location_id,omitempty"`
-	Parent      string             `bson:"s_parent_product,omitempty"`
-	ParentID    string             `bson:"s_parent_product_id,omitempty"`
-	SKU         string             `bson:"sku,omitempty"`
-	VariantID   string             `bson:"s_variant_id,omitempty"`
-	VariantName string             `bson:"s_variant_name,omitempty`
+	ID             primitive.ObjectID `bson:"_id,omitempty"`
+	ItemType       string             `bson:"itemtype"`
+	Available      int                `bson:"s_curr_stock"`
+	PriorAvailable int                `bson:"s_prev_stock"`
+	InventoryID    string             `bson:"s_inventory_id,omitempty"`
+	LocationID     string             `bson:"s_location_id,omitempty"`
+	Parent         string             `bson:"s_parent_product,omitempty"`
+	ParentID       string             `bson:"s_parent_product_id,omitempty"`
+	SKU            string             `bson:"sku,omitempty"`
+	VariantID      string             `bson:"s_variant_id,omitempty"`
+	VariantName    string             `bson:"s_variant_name,omitempty`
 }
 
 type Product struct {
@@ -246,9 +247,8 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
 	var Items []ShopifyItem
-	var inventorylevel InventoryLevel
 
-	response, err := http.Get(url) //use package "net/http"
+	response, err := http.Get(url)
 
 	if err != nil {
 		log.Errorf("Error reading products: %v", err)
@@ -260,18 +260,25 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 	scanner := bufio.NewScanner(response.Body)
 	count := 0
 	for scanner.Scan() {
+		var inventorylevel InventoryLevel
+		var avail int
 		count++
-		log.Debug(fmt.Sprintf("Processing inventory file line %d", count))
 		if err := json.Unmarshal(scanner.Bytes(), &inventorylevel); err != nil {
 			log.Warn("Problem scanning line")
 			continue
 		}
-		if len(inventorylevel.InventoryID) > 0 {
+		if inventorylevel.Location.ID != "" {
+			avail = inventorylevel.Available
+			log.WithFields(log.Fields{
+				"ID":          inventorylevel.InventoryID,
+				"Location":    inventorylevel.Location.ID,
+				"Stock level": avail,
+			}).Info(fmt.Sprintf("Processing inventory file line %d", count))
 			item := ShopifyItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
 				LocationID:  inventorylevel.Location.ID,
-				Available:   inventorylevel.Available,
+				Available:   avail,
 			}
 			Items = append(Items, item)
 		}
@@ -279,7 +286,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := setstock(storename, Items, client); err != nil {
+	if err := setshopstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}
@@ -290,9 +297,8 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 func processproductlevels(url, storename string, client *mongo.Client) error {
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
 	var Items []ShopifyItem
-	var productvariant ProductVariant
 
-	response, err := http.Get(url) //use package "net/http"
+	response, err := http.Get(url)
 
 	if err != nil {
 		log.Errorf("Error reading products: %v", err)
@@ -304,6 +310,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	scanner := bufio.NewScanner(response.Body)
 	count := 0
 	for scanner.Scan() {
+		var productvariant ProductVariant
 		count++
 		log.Debug(fmt.Sprintf("Processing products file line %d", count))
 		if err := json.Unmarshal(scanner.Bytes(), &productvariant); err != nil {
@@ -326,7 +333,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	if err := scanner.Err(); err != nil {
 		log.Errorf("Error reading input:", err)
 	}
-	if err := setstock(storename, Items, client); err != nil {
+	if err := setshopstock(storename, Items, client); err != nil {
 		log.Errorf("Error with DB upsert %v", err)
 		return err
 	}
