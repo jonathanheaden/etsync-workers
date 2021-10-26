@@ -9,7 +9,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	// "go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 func getdatabases(client *mongo.Client) ([]string, error) {
@@ -32,11 +31,69 @@ func getstoretoken(storename string, client *mongo.Client) string {
 		log.Warn(err)
 		return ""
 	}
-	log.Info("Got shop record from database")
+	log.Info("Got shop record from database for shopify token")
 	return fmt.Sprintf("%v", doc["accessToken"])
 }
 
-func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error { 
+func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	var token etsytoken
+	collection := client.Database("etync").Collection("shops")
+	filter := bson.D{{"shopify_domain", config.SHOP_NAME}}
+	if err := collection.FindOne(ctx, filter).Decode(&token); err != nil {
+		log.Warn(err)
+		return etsytoken{}, err
+	}
+	log.Info("Got shop record from database for etsy token")
+
+	if token.EtsyOnBoarded && (time.Now().Add(10 * time.Minute).Before(token.EtsyTokenExpires)) {
+		// etsy has been onboarded & the etsy accesscode has not expired
+		return token, nil
+		log.Info("Etsy token has greater than 10 minutes ttl, reusing current token")
+	} else {
+		log.Info("New Etsy token required, sending request to etsy API")
+		token, err := getEtsyTokenFromAPI(config.ETSY_CLIENT_ID, config.ETSY_REDIRECT_URI, token)
+		if err != nil {
+			return etsytoken{}, err
+		}
+		token.EtsyOnBoarded = true
+		log.WithFields(log.Fields{
+			"accesstoken":  token.EtsyAccessToken,
+			"refreshtoken": token.EtsyRefreshToken,
+		}).Info("about to write token to DB")
+		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
+			log.Errorf("Unable to store the etsy token in database! %v", err)
+			return etsytoken{}, err
+		}
+	}
+	return token, nil
+
+}
+
+func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
+	log.Info("Writing the etsy token to DB")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	shop_collection := client.Database("etync").Collection("shops")
+	filter := bson.D{{"shopify_domain", storename}}
+	update := bson.M{
+		"$set": bson.M{
+			"etsyOnBoarded":      token.EtsyOnBoarded,
+			"etsy_access_token":  token.EtsyAccessToken,
+			"etsy_refresh_token": token.EtsyRefreshToken,
+			"etsy_token_expires": token.EtsyTokenExpires,
+		},
+	}
+
+	opts := options.FindOneAndUpdate().SetUpsert(true)
+	result := shop_collection.FindOneAndUpdate(ctx, filter, update, opts)
+	if result.Err() != nil {
+		log.Infof("No prior record found when inserting doc %s", result.Err())
+		return result.Err()
+	}
+	log.Info("Success writing etsy token to Database")
+	return nil
+}
+func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	stockCollection := client.Database("etync").Collection("stock")
@@ -73,7 +130,7 @@ func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) e
 			}
 		}
 		log.WithFields(log.Fields{
-			"ID":                   item.InventoryID,
+			"ID": item.InventoryID,
 		}).Info("Updating Database")
 
 		opts := options.FindOneAndUpdate().SetUpsert(true)
