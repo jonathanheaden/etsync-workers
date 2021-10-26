@@ -5,7 +5,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	// "go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -33,6 +32,13 @@ func main() {
 	defer client.Disconnect(ctx)
 
 	token := getstoretoken(config.SHOP_NAME, client)
+
+	e_token, err := getetsytoken(config, client)
+	if err != nil {
+		log.Errorf("Error getting etsy token from db %v", err)
+		log.Fatal("Cannot get Etsy token")
+	}
+	log.Infof("Got Token for Etsy (shopify store %s)", e_token.shopify_domain)
 
 	inventoryurl, err := getinventorylevels(config.SHOP_NAME, token)
 	if err != nil {
