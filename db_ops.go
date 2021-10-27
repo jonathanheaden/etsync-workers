@@ -96,7 +96,7 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 	filter := bson.D{{"shopify_domain", storename}}
 	update := bson.M{
 		"$set": bson.M{
-			"etsy_shop_id": etsy_shop.ShopID,
+			"etsy_shop_id":   etsy_shop.ShopID,
 			"etsy_shop_name": etsy_shop.ShopName,
 		},
 	}
