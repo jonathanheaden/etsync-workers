@@ -9,8 +9,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type etsyShop struct {
@@ -171,9 +171,9 @@ func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsyto
 	return etoken, nil
 }
 
-func getUsersEtsyShops(storename, token, clientid string, client *mongo.Client) error {
+func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) error {
 	var etsy_shop etsyShop
-	user :=  strings.Split(token,".")[0]
+	user := strings.Split(token, ".")[0]
 	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/users/%s/shops", user)
 	method := "GET"
 
