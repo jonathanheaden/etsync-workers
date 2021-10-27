@@ -258,11 +258,11 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 	defer response.Body.Close()
 
 	scanner := bufio.NewScanner(response.Body)
-	count := 0
+
 	for scanner.Scan() {
 		var inventorylevel InventoryLevel
 		var avail int
-		count++
+
 		if err := json.Unmarshal(scanner.Bytes(), &inventorylevel); err != nil {
 			log.Warn("Problem scanning line")
 			continue
@@ -273,7 +273,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
-			}).Info(fmt.Sprintf("Processing inventory file line %d", count))
+			}).Info(fmt.Sprintf("Processing inventory file"))
 			item := ShopifyItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
