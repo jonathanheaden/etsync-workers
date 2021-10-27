@@ -12,6 +12,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type etsyShop struct {
+	ShopID   int    `json:"shop_id"`
+	ShopName string `json:"shop_name"`
+}
+
 type etsytoken struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty"`
 	shopify_domain       string             `bson:"shopify_domain"`
@@ -39,13 +44,78 @@ type etsyTokenResponse struct {
 	RefreshToken string    `json:"refresh_token"`
 }
 
-// Sample etsy token response
-// {
-//     "access_token": "532690296.Zj7Ls5EGzuSo_VXXZkTNXHb_h-zVanu1lqRrXmaxZQvFqMqSl4xNxNZwV4zEwwkqhlFgLWOrXFKWa7V5NZSJtDMGIk",
-//     "token_type": "Bearer",
-//     "expires_in": 3600,
-//     "refresh_token": "532690296.R_JL6QMeLG19Et2tpS736GHHPMXn0qp5kCoZWC8hRGFFuT1xTOj1GvhrZFfPegDathMxcsxgmDqrS7taaJlGFuVg7M"
-// }
+type etsyShopListingResult struct {
+	ListingID                 int    `json:"listing_id"`
+	ShopID                    int    `json:"shop_id"`
+	Title                     string `json:"title"`
+	Description               string `json:"description"`
+	State                     string `json:"state"`
+	CreationTimestamp         int    `json:"creation_timestamp"`
+	EndingTimestamp           int    `json:"ending_timestamp"`
+	OriginalCreationTimestamp int    `json:"original_creation_timestamp"`
+	LastModifiedTimestamp     int    `json:"last_modified_timestamp"`
+	StateTimestamp            int    `json:"state_timestamp"`
+	Quantity                  int    `json:"quantity"`
+}
+
+type etsyShopListings struct {
+	Count   int                     `json:"count"`
+	Results []etsyShopListingResult `json:"results"`
+}
+
+type etsyProduct struct {
+	ProductID int64  `json:"product_id"`
+	Sku       string `json:"sku"`
+	Offerings []struct {
+		OfferingID int64 `json:"offering_id"`
+		Quantity   int   `json:"quantity"`
+		IsEnabled  bool  `json:"is_enabled"`
+		IsDeleted  bool  `json:"is_deleted"`
+		Price      struct {
+			Amount       int    `json:"amount"`
+			Divisor      int    `json:"divisor"`
+			CurrencyCode string `json:"currency_code"`
+		} `json:"price"`
+	} `json:"offerings"`
+	PropertyValues []struct {
+		PropertyID   int         `json:"property_id"`
+		PropertyName string      `json:"property_name"`
+		ScaleID      interface{} `json:"scale_id"`
+		ScaleName    interface{} `json:"scale_name"`
+		ValueIds     []int       `json:"value_ids"`
+		Values       []string    `json:"values"`
+	} `json:"property_values"`
+}
+
+type etsyListing struct {
+	Products           []etsyProduct `json:"products"`
+	PriceOnProperty    []interface{} `json:"price_on_property"`
+	QuantityOnProperty []int         `json:"quantity_on_property"`
+	SkuOnProperty      []int         `json:"sku_on_property"`
+	Listing            interface{}   `json:"listing"`
+}
+
+type etsyListingUpdate struct {
+	Products []struct {
+		Sku       string `json:"sku"`
+		Offerings []struct {
+			Quantity  int     `json:"quantity"`
+			IsEnabled bool    `json:"is_enabled"`
+			Price     float64 `json:"price"`
+		} `json:"offerings"`
+		PropertyValues []struct {
+			PropertyID   int         `json:"property_id"`
+			PropertyName string      `json:"property_name"`
+			ScaleID      interface{} `json:"scale_id"`
+			ValueIds     []int       `json:"value_ids"`
+			Values       []string    `json:"values"`
+		} `json:"property_values"`
+	} `json:"products"`
+	PriceOnProperty    []interface{} `json:"price_on_property"`
+	QuantityOnProperty []int         `json:"quantity_on_property"`
+	SkuOnProperty      []int         `json:"sku_on_property"`
+	Listing            interface{}   `json:"listing"`
+}
 
 func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsytoken, error) {
 	var response etsyTokenResponse
