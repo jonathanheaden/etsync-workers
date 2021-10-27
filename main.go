@@ -40,6 +40,10 @@ func main() {
 	}
 	log.Infof("Got Token for Etsy (shopify store %s)", e_token.shopify_domain)
 
+	err = getUsersEtsyShops(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	if err != nil {
+		log.Fatalf("Could not retrieve users Etsy Shops %v", err)
+	}
 	inventoryurl, err := getinventorylevels(config.SHOP_NAME, token)
 	if err != nil {
 		log.Fatalf("Unable to register query for inventory levels: %v", err)
