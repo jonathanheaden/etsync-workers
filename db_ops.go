@@ -57,10 +57,6 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 			return etsytoken{}, err
 		}
 		token.EtsyOnBoarded = true
-		log.WithFields(log.Fields{
-			"accesstoken":  token.EtsyAccessToken,
-			"refreshtoken": token.EtsyRefreshToken,
-		}).Info("about to write token to DB")
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
 			return etsytoken{}, err
@@ -93,6 +89,7 @@ func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) err
 	log.Info("Success writing etsy token to Database")
 	return nil
 }
+
 func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
