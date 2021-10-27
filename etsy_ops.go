@@ -9,6 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -168,4 +169,44 @@ func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsyto
 	etoken.EtsyAccessToken = response.AccessToken
 	etoken.EtsyRefreshToken = response.RefreshToken
 	return etoken, nil
+}
+
+func getUsersEtsyShops(storename, token, clientid string, client *mongo.Client) error {
+	var etsy_shop etsyShop
+	user :=  strings.Split(token,".")[0]
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/users/%s/shops", user)
+	method := "GET"
+
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	if err := json.Unmarshal(body, &etsy_shop); err != nil {
+		log.Errorf("Error with response unmarshall: %v", err)
+		return err
+	}
+
+	if err = saveEtsyShop(storename, etsy_shop, client); err != nil {
+		log.Errorf("Error saving shop to DB: %v", err)
+		return err
+	}
+	return nil
 }

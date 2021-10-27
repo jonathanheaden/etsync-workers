@@ -90,6 +90,27 @@ func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) err
 	return nil
 }
 
+func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) error {
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	shop_collection := client.Database("etync").Collection("shops")
+	filter := bson.D{{"shopify_domain", storename}}
+	update := bson.M{
+		"$set": bson.M{
+			"etsy_shop_id": etsy_shop.ShopID,
+			"etsy_shop_name": etsy_shop.ShopName,
+		},
+	}
+
+	opts := options.FindOneAndUpdate().SetUpsert(true)
+	result := shop_collection.FindOneAndUpdate(ctx, filter, update, opts)
+	if result.Err() != nil {
+		log.Infof("Error writing Etsy shop details %s", result.Err())
+		return result.Err()
+	}
+	log.Info("Success writing etsy shop details to Database")
+	return nil
+}
+
 func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
