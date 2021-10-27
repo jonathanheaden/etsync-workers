@@ -56,7 +56,7 @@ type etsyShopListingResult struct {
 	OriginalCreationTimestamp int    `json:"original_creation_timestamp"`
 	LastModifiedTimestamp     int    `json:"last_modified_timestamp"`
 	StateTimestamp            int    `json:"state_timestamp"`
-	Quantity                  int    `json:"quantity"`
+	Quantity                  int    `json:"quantity"` // <- this is the combined quantity for all variant products under this listing
 }
 
 type etsyShopListings struct {
@@ -196,7 +196,7 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		return err
 	}
 	if err := json.Unmarshal(body, &etsy_shop); err != nil {
@@ -208,5 +208,47 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 		log.Errorf("Error saving shop to DB: %v", err)
 		return err
 	}
+	return nil
+}
+
+func getEtsyShopListings(storename, clientid, token string, client *mongo.Client) error {
+	var shoplistings etsyShopListings
+	url := "https://openapi.etsy.com/v3/application/shops/31983962/listings"
+	method := "GET"
+
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if err := json.Unmarshal(body, &shoplistings); err != nil {
+		log.Errorf("Error with response unmarshall: %v", err)
+		return err
+	}
+	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
+
+	if err = saveEtsyShopListings(storename, shoplistings.Results, client); err != nil {
+		log.Errorf("Error saving listings to DB: %v", err)
+		return err
+	}
+
 	return nil
 }

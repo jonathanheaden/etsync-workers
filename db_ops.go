@@ -111,6 +111,34 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 	return nil
 }
 
+func saveEtsyShopListings(storename string, listings []etsyShopListingResult, client *mongo.Client) error {
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	listings_collection := client.Database("etync").Collection("listings")
+	for _, listing := range listings {
+		log.WithFields(log.Fields{
+			"Listing_ID": listing.ListingID,
+			"Title": listing.Title,
+		}).Info("Updating DB with Etsy listing")
+		filter := bson.D{{"listing_id", listing.ListingID}}
+		update := bson.M{
+			"$set": bson.M{
+				"shop_id":       listing.ShopID,
+				"listing_title": listing.Title,
+				"description":   listing.Description,
+			},
+		}
+
+		opts := options.FindOneAndUpdate().SetUpsert(true)
+		result := listings_collection.FindOneAndUpdate(ctx, filter, update, opts)
+		if result.Err() != nil {
+			log.Infof("No prior listing recorded, adding new %s", result.Err())
+			continue
+		}
+	}
+	log.Infof("Success writing %d etsy listing details to Database", len(listings))
+	return nil
+}
+
 func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
