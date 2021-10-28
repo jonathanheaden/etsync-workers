@@ -40,12 +40,12 @@ func main() {
 	}
 	log.Infof("Got Token for Etsy (shopify store %s)", e_token.shopify_domain)
 
-	err = getUsersEtsyShops(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	etsyshopid, err := getUsersEtsyShops(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
 	if err != nil {
 		log.Fatalf("Could not retrieve users Etsy Shops %v", err)
 	}
 
-	err = getEtsyShopListings(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	err = getEtsyShopListings(config.SHOP_NAME, etsyshopid, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
 	if err != nil {
 		log.Fatalf("Could not retrieve Etsy Listings %v", err)
 	}
