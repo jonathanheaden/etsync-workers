@@ -111,31 +111,34 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 	return nil
 }
 
-func saveEtsyShopListings(storename string, listings []etsyShopListingResult, client *mongo.Client) error {
+func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) error {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	listings_collection := client.Database("etync").Collection("listings")
-	for _, listing := range listings {
+	products_collection := client.Database("etync").Collection("products")
+	for _, p := range products {
 		log.WithFields(log.Fields{
-			"Listing_ID": listing.ListingID,
-			"Title": listing.Title,
-		}).Info("Updating DB with Etsy listing")
-		filter := bson.D{{"listing_id", listing.ListingID}}
+			"Product_ID": p.ProductID,
+			"Title":      p.Title,
+			"Sku":        p.Sku,
+		}).Info("Updating DB with Etsy product")
+		filter := bson.D{{"product_id", p.ProductID}}
 		update := bson.M{
 			"$set": bson.M{
-				"shop_id":       listing.ShopID,
-				"listing_title": listing.Title,
-				"description":   listing.Description,
+				"shop_id":       p.ShopID,
+				"product_title": p.Title,
+				"description":   p.Description,
+				"sku":           p.Sku,
+				"quantity": p.Offerings[0].Quantity,
 			},
 		}
 
 		opts := options.FindOneAndUpdate().SetUpsert(true)
-		result := listings_collection.FindOneAndUpdate(ctx, filter, update, opts)
+		result := products_collection.FindOneAndUpdate(ctx, filter, update, opts)
 		if result.Err() != nil {
 			log.Infof("No prior listing recorded, adding new %s", result.Err())
 			continue
 		}
 	}
-	log.Infof("Success writing %d etsy listing details to Database", len(listings))
+	log.Infof("Success writing %d etsy listing details to Database", len(products))
 	return nil
 }
 

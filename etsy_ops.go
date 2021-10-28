@@ -64,20 +64,27 @@ type etsyShopListings struct {
 	Results []etsyShopListingResult `json:"results"`
 }
 
+type etsyOffering struct {
+	OfferingID int64 `json:"offering_id"`
+	Quantity   int   `json:"quantity"`
+	IsEnabled  bool  `json:"is_enabled"`
+	IsDeleted  bool  `json:"is_deleted"`
+	Price      struct {
+		Amount       int    `json:"amount"`
+		Divisor      int    `json:"divisor"`
+		CurrencyCode string `json:"currency_code"`
+	} `json:"price"`
+}
+
 type etsyProduct struct {
-	ProductID int64  `json:"product_id"`
-	Sku       string `json:"sku"`
-	Offerings []struct {
-		OfferingID int64 `json:"offering_id"`
-		Quantity   int   `json:"quantity"`
-		IsEnabled  bool  `json:"is_enabled"`
-		IsDeleted  bool  `json:"is_deleted"`
-		Price      struct {
-			Amount       int    `json:"amount"`
-			Divisor      int    `json:"divisor"`
-			CurrencyCode string `json:"currency_code"`
-		} `json:"price"`
-	} `json:"offerings"`
+	ListingID   int    `json:"listing_id"`
+	ShopID      int    `json:"shop_id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	ProductID   int64  `json:"product_id"`
+	Sku         string `json:"sku"`
+	IsDeleted   bool   `json:"is_deleted"`
+	Offerings   []etsyOffering `json:"offerings"`
 	PropertyValues []struct {
 		PropertyID   int         `json:"property_id"`
 		PropertyName string      `json:"property_name"`
@@ -93,7 +100,6 @@ type etsyListing struct {
 	PriceOnProperty    []interface{} `json:"price_on_property"`
 	QuantityOnProperty []int         `json:"quantity_on_property"`
 	SkuOnProperty      []int         `json:"sku_on_property"`
-	Listing            interface{}   `json:"listing"`
 }
 
 type etsyListingUpdate struct {
@@ -171,9 +177,10 @@ func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsyto
 	return etoken, nil
 }
 
-func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) error {
+func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) (string, error) {
 	var etsy_shop etsyShop
 	user := strings.Split(token, ".")[0]
+	log.Infof("Getting shops for user id %s", user)
 	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/users/%s/shops", user)
 	method := "GET"
 
@@ -182,7 +189,7 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 
 	if err != nil {
 		log.Error(err)
-		return err
+		return "", err
 	}
 	req.Header.Add("x-api-key", clientid)
 	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
@@ -190,30 +197,31 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 	res, err := httpclient.Do(req)
 	if err != nil {
 		log.Error(err)
-		return err
+		return "", err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		log.Error(err)
-		return err
+		return "", err
 	}
 	if err := json.Unmarshal(body, &etsy_shop); err != nil {
 		log.Errorf("Error with response unmarshall: %v", err)
-		return err
+		return "", err
 	}
 
 	if err = saveEtsyShop(storename, etsy_shop, client); err != nil {
 		log.Errorf("Error saving shop to DB: %v", err)
-		return err
+		return "", err
 	}
-	return nil
+	log.Infof("Got shop id %d for shop name %s", etsy_shop.ShopID, etsy_shop.ShopName)
+	return fmt.Sprintf("%d", etsy_shop.ShopID), nil
 }
 
-func getEtsyShopListings(storename, clientid, token string, client *mongo.Client) error {
+func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client *mongo.Client) error {
 	var shoplistings etsyShopListings
-	url := "https://openapi.etsy.com/v3/application/shops/31983962/listings"
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/shops/%s/listings", etsy_shopid)
 	method := "GET"
 
 	httpclient := &http.Client{}
@@ -245,8 +253,54 @@ func getEtsyShopListings(storename, clientid, token string, client *mongo.Client
 	}
 	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
 
-	if err = saveEtsyShopListings(storename, shoplistings.Results, client); err != nil {
-		log.Errorf("Error saving listings to DB: %v", err)
+	if err = getEtsyInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
+
+	}
+	return nil
+}
+
+func getEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
+	var etsyproducts []etsyProduct
+	method := "GET"
+	httpclient := &http.Client{}
+	for _, l := range listings {
+		var etsy_listing etsyListing
+		url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%d/inventory", l.ListingID)
+		req, err := http.NewRequest(method, url, nil)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		req.Header.Add("x-api-key", clientid)
+		req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+		res, err := httpclient.Do(req)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+		defer res.Body.Close()
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		if err := json.Unmarshal(body, &etsy_listing); err != nil {
+			log.Errorf("Error with response unmarshall: %v", err)
+			return err
+		}
+		log.Infof("Got %d products in listing for %s", len(etsy_listing.Products), l.Title)
+		for _, p := range etsy_listing.Products {
+
+			p.ListingID = l.ListingID
+			p.ShopID = l.ShopID
+			p.Title = l.Title
+			p.Description = l.Description
+			etsyproducts = append(etsyproducts, p)
+		}
+	}
+
+	if err := saveEtsyProducts(storename, etsyproducts, client); err != nil {
+		log.Errorf("Error saving products to DB: %v", err)
 		return err
 	}
 
