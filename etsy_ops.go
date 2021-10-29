@@ -77,14 +77,14 @@ type etsyOffering struct {
 }
 
 type etsyProduct struct {
-	ListingID   int    `json:"listing_id"`
-	ShopID      int    `json:"shop_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	ProductID   int64  `json:"product_id"`
-	Sku         string `json:"sku"`
-	IsDeleted   bool   `json:"is_deleted"`
-	Offerings   []etsyOffering `json:"offerings"`
+	ListingID      int            `json:"listing_id"`
+	ShopID         int            `json:"shop_id"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	ProductID      int64          `json:"product_id"`
+	Sku            string         `json:"sku"`
+	IsDeleted      bool           `json:"is_deleted"`
+	Offerings      []etsyOffering `json:"offerings"`
 	PropertyValues []struct {
 		PropertyID   int         `json:"property_id"`
 		PropertyName string      `json:"property_name"`
@@ -102,6 +102,30 @@ type etsyListing struct {
 	SkuOnProperty      []int         `json:"sku_on_property"`
 }
 
+// type EtsyAPIUpdate struct {
+// 	ProductID int    `json:"product_id"`
+// 	Sku       string `json:"sku"`
+// 	IsDeleted bool   `json:"is_deleted"`
+// 	Offerings []struct {
+// 		OfferingID int  `json:"offering_id"`
+// 		Quantity   int  `json:"quantity"`
+// 		IsEnabled  bool `json:"is_enabled"`
+// 		IsDeleted  bool `json:"is_deleted"`
+// 		Price      struct {
+// 			Amount       int    `json:"amount"`
+// 			Divisor      int    `json:"divisor"`
+// 			CurrencyCode string `json:"currency_code"`
+// 		} `json:"price"`
+// 	} `json:"offerings"`
+// 	PropertyValues []struct {
+// 		PropertyID   int      `json:"property_id"`
+// 		PropertyName string   `json:"property_name"`
+// 		ScaleID      int      `json:"scale_id"`
+// 		ScaleName    string   `json:"scale_name"`
+// 		ValueIds     []int    `json:"value_ids"`
+// 		Values       []string `json:"values"`
+// 	} `json:"property_values"`
+// }
 type etsyListingUpdate struct {
 	Products []struct {
 		Sku       string `json:"sku"`
