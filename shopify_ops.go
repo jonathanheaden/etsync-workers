@@ -10,7 +10,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -79,20 +78,6 @@ type InventoryLevel struct {
 	ID          string    `json:"id"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	InventoryID string    `json:"__parentId"`
-}
-
-type ShopifyItem struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty"`
-	ItemType       string             `bson:"itemtype"`
-	Available      int                `bson:"s_curr_stock"`
-	PriorAvailable int                `bson:"s_prev_stock"`
-	InventoryID    string             `bson:"s_inventory_id,omitempty"`
-	LocationID     string             `bson:"s_location_id,omitempty"`
-	Parent         string             `bson:"s_parent_product,omitempty"`
-	ParentID       string             `bson:"s_parent_product_id,omitempty"`
-	SKU            string             `bson:"sku,omitempty"`
-	VariantID      string             `bson:"s_variant_id,omitempty"`
-	VariantName    string             `bson:"s_variant_name,omitempty`
 }
 
 type Product struct {
@@ -246,7 +231,7 @@ func getinventorylevels(storeurl, token string) (string, error) {
 func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
-	var Items []ShopifyItem
+	var Items []StockItem
 
 	response, err := http.Get(url)
 
@@ -274,7 +259,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
 			}).Info(fmt.Sprintf("Processing inventory file"))
-			item := ShopifyItem{
+			item := StockItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
 				LocationID:  inventorylevel.Location.ID,
@@ -296,7 +281,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 func processproductlevels(url, storename string, client *mongo.Client) error {
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
-	var Items []ShopifyItem
+	var Items []StockItem
 
 	response, err := http.Get(url)
 
@@ -318,7 +303,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 			continue
 		}
 		if productvariant.InventoryManagement == "SHOPIFY" {
-			item := ShopifyItem{
+			item := StockItem{
 				InventoryID: productvariant.InventoryItem.ID,
 				ItemType:    "productvariant",
 				VariantName: productvariant.DisplayName,

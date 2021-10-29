@@ -7,9 +7,30 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+type StockItem struct {
+	ID                primitive.ObjectID `bson:"_id,omitempty"`
+	ItemType          string             `bson:"itemtype"`
+	Available         int                `bson:"s_curr_stock"`
+	PriorAvailable    int                `bson:"s_prev_stock"`
+	InventoryID       string             `bson:"s_inventory_id,omitempty"`
+	LocationID        string             `bson:"s_location_id,omitempty"`
+	Parent            string             `bson:"s_parent_product,omitempty"`
+	ParentID          string             `bson:"s_parent_product_id,omitempty"`
+	SKU               string             `bson:"sku,omitempty"`
+	VariantID         string             `bson:"s_variant_id,omitempty"`
+	VariantName       string             `bson:"s_variant_name,omitempty`
+	EtsyProductID     int                `bson:"e_product_id,omitempty"`
+	EtsyDescription   string             `bson:"e_description,omitempty"`
+	EtsyProductTitle  string             `bson:"e_product_title,omitempty"`
+	EtsyShopID        int                `bson:"e_shop_id,omitempty"`
+	EtsyQuantity      int                `bson:"e_curr_stock"`
+	EtsyPriorQuantity int                `bson:"e_prev_stock"`
+}
 
 func getdatabases(client *mongo.Client) ([]string, error) {
 	var dblist []string
@@ -57,6 +78,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 			return etsytoken{}, err
 		}
 		token.EtsyOnBoarded = true
+		token.shopify_domain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
 			return etsytoken{}, err
@@ -127,7 +149,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 				"product_title": p.Title,
 				"description":   p.Description,
 				"sku":           p.Sku,
-				"quantity": p.Offerings[0].Quantity,
+				"quantity":      p.Offerings[0].Quantity,
 			},
 		}
 
@@ -142,12 +164,12 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 	return nil
 }
 
-func setshopstock(storename string, items []ShopifyItem, client *mongo.Client) error {
+func setshopstock(storename string, items []StockItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	stockCollection := client.Database("etync").Collection("stock")
 	for _, item := range items {
-		var existingRecord ShopifyItem
+		var existingRecord StockItem
 		var update bson.M
 		itemtype := item.ItemType
 		item.ItemType = "shopify-stock-level"
