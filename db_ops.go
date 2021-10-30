@@ -13,23 +13,25 @@ import (
 )
 
 type StockItem struct {
-	ID                primitive.ObjectID `bson:"_id,omitempty"`
-	ItemType          string             `bson:"itemtype"`
-	Available         int                `bson:"s_curr_stock"`
-	PriorAvailable    int                `bson:"s_prev_stock"`
-	InventoryID       string             `bson:"s_inventory_id,omitempty"`
-	LocationID        string             `bson:"s_location_id,omitempty"`
-	Parent            string             `bson:"s_parent_product,omitempty"`
-	ParentID          string             `bson:"s_parent_product_id,omitempty"`
-	SKU               string             `bson:"sku,omitempty"`
-	VariantID         string             `bson:"s_variant_id,omitempty"`
-	VariantName       string             `bson:"s_variant_name,omitempty`
-	EtsyProductID     int                `bson:"e_product_id,omitempty"`
-	EtsyDescription   string             `bson:"e_description,omitempty"`
-	EtsyProductTitle  string             `bson:"e_product_title,omitempty"`
-	EtsyShopID        int                `bson:"e_shop_id,omitempty"`
-	EtsyQuantity      int                `bson:"e_curr_stock"`
-	EtsyPriorQuantity int                `bson:"e_prev_stock"`
+	ID                  primitive.ObjectID `bson:"_id,omitempty"`
+	ShopifyDomain       string             `bson:shopify_domain,omitempty`
+	ItemType            string             `bson:"itemtype,omitempty"`
+	Available           int                `bson:"s_curr_stock"`
+	PriorAvailable      int                `bson:"s_prev_stock"`
+	InventoryID         string             `bson:"s_inventory_id,omitempty"`
+	LocationID          string             `bson:"s_location_id,omitempty"`
+	Parent              string             `bson:"s_parent_product,omitempty"`
+	ParentID            string             `bson:"s_parent_product_id,omitempty"`
+	SKU                 string             `bson:"sku,omitempty"`
+	VariantID           string             `bson:"s_variant_id,omitempty"`
+	VariantName         string             `bson:"s_variant_name,omitempty`
+	EtsyProductID       int                `bson:"e_product_id,omitempty"`
+	EtsyDescription     string             `bson:"e_description,omitempty"`
+	EtsyProductTitle    string             `bson:"e_product_title,omitempty"`
+	EtsyShopID          int                `bson:"e_shop_id,omitempty"`
+	EtsyQuantity        int                `bson:"e_curr_stock"`
+	EtsyPriorQuantity   int                `bson:"e_prev_stock"`
+	EtsyItemInitialised bool               `bson:"e_item_initialised"`
 }
 
 func getdatabases(client *mongo.Client) ([]string, error) {
@@ -69,8 +71,8 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 
 	if token.EtsyOnBoarded && (time.Now().Add(10 * time.Minute).Before(token.EtsyTokenExpires)) {
 		// etsy has been onboarded & the etsy accesscode has not expired
-		return token, nil
 		log.Info("Etsy token has greater than 10 minutes ttl, reusing current token")
+		return token, nil
 	} else {
 		log.Info("New Etsy token required, sending request to etsy API")
 		token, err := getEtsyTokenFromAPI(config.ETSY_CLIENT_ID, config.ETSY_REDIRECT_URI, token)
@@ -79,6 +81,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 		}
 		token.EtsyOnBoarded = true
 		token.shopify_domain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
+
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
 			return etsytoken{}, err
@@ -133,35 +136,67 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 	return nil
 }
 
-func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) error {
+// When we write the etsy inventory level to the DB we need to decide if this is the first time the
+// Etsy record is being written, if so then the current inventory level is the previous level
+// If this is not the first time then there  should be an inventory level so use that as the prior level
+// This function returns a delta list for the prducts in the listing
+// This should be returned as a struct with two independent sets of actions:
+// 1. a map of productid -> delta which gets applied to the Etsy API
+// 2. a map of shopify variant Ids -> delta which gets applied to Shopify API
+func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) ([]etsyDelta, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	products_collection := client.Database("etync").Collection("products")
+	var stockdelta []etsyDelta
+	var existingRecord StockItem
+	stockCollection := client.Database("etync").Collection("stock")
 	for _, p := range products {
+		updateRecord := bson.M{
+			"shop_id":        p.ShopID,
+			"product_title":  p.Title,
+			"description":    p.Description,
+			"sku":            p.Sku,
+			"shopify_domain": p.ShopifyDomain,
+			"e_curr_stock":   p.Offerings[0].Quantity,
+		}
 		log.WithFields(log.Fields{
 			"Product_ID": p.ProductID,
 			"Title":      p.Title,
 			"Sku":        p.Sku,
 		}).Info("Updating DB with Etsy product")
-		filter := bson.D{{"product_id", p.ProductID}}
+		filter := bson.M{"sku": p.Sku, "shopify_domain": p.ShopifyDomain}
+		if err := stockCollection.FindOne(ctx, filter).Decode(&existingRecord); err != nil {
+			log.WithFields(log.Fields{
+				"etsy-ProductID": p.ProductID,
+				"Response":       err,
+			}).Infof("Record not found for shopify item with this sku, initialising with current stock level %d", p.Offerings[0].Quantity)
+			updateRecord["e_prev_stock"] = p.Offerings[0].Quantity
+			updateRecord["e_item_exists"] = true
+		} else {
+			updateRecord["e_prev_stock"] = existingRecord.EtsyQuantity
+			if !existingRecord.EtsyItemInitialised {
+				updateRecord["e_prev_stock"] = p.Offerings[0].Quantity
+				updateRecord["e_item_initialised"] = true
+			}
+			log.Infof("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
+			if existingRecord.Available != existingRecord.PriorAvailable {
+				stockdelta = append(stockdelta, etsyDelta{
+					ProductID: p.ProductID,
+					Delta:     (existingRecord.Available - existingRecord.PriorAvailable),
+				})
+			}
+		}
 		update := bson.M{
-			"$set": bson.M{
-				"shop_id":       p.ShopID,
-				"product_title": p.Title,
-				"description":   p.Description,
-				"sku":           p.Sku,
-				"quantity":      p.Offerings[0].Quantity,
-			},
+			"$set": updateRecord,
 		}
 
 		opts := options.FindOneAndUpdate().SetUpsert(true)
-		result := products_collection.FindOneAndUpdate(ctx, filter, update, opts)
+		result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
 		if result.Err() != nil {
 			log.Infof("No prior listing recorded, adding new %s", result.Err())
 			continue
 		}
 	}
 	log.Infof("Success writing %d etsy listing details to Database", len(products))
-	return nil
+	return stockdelta, nil
 }
 
 func setshopstock(storename string, items []StockItem, client *mongo.Client) error {
@@ -181,17 +216,25 @@ func setshopstock(storename string, items []StockItem, client *mongo.Client) err
 					"Response": err,
 				}).Infof("Record not found, initialising with current stock level %d", item.Available)
 				item.PriorAvailable = item.Available
+				item.EtsyItemInitialised = false
 			} else {
 				item.PriorAvailable = existingRecord.Available
 				log.Infof("Loading existing record for %s: stock levels (prev->new) %d -> %d", item.InventoryID, item.PriorAvailable, item.Available)
 			}
 			update = bson.M{
-				"$set": item,
+				"$set": bson.M{
+					"shopify_domain": storename,
+					"s_curr_stock":   item.Available,
+					"s_prev_stock": item.PriorAvailable,
+					"s_inventory_id": item.InventoryID,
+					"s_location_id":  item.LocationID,
+				},
 			}
 		} else {
 			// this is a product variant so we explicitly set the fields we want to write so as to avoid overwriting the stock levels
 			update = bson.M{
 				"$set": bson.M{
+					"shopify_domain":      storename,
 					"s_parent_product":    item.Parent,
 					"s_parent_product_id": item.ParentID,
 					"sku":                 item.SKU,

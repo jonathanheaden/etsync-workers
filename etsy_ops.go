@@ -79,6 +79,7 @@ type etsyOffering struct {
 type etsyProduct struct {
 	ListingID      int            `json:"listing_id"`
 	ShopID         int            `json:"shop_id"`
+	ShopifyDomain  string         `json:"shopify_domain"`
 	Title          string         `json:"title"`
 	Description    string         `json:"description"`
 	ProductID      int64          `json:"product_id"`
@@ -146,6 +147,11 @@ type etsyListingUpdate struct {
 	QuantityOnProperty []int         `json:"quantity_on_property"`
 	SkuOnProperty      []int         `json:"sku_on_property"`
 	Listing            interface{}   `json:"listing"`
+}
+
+type etsyDelta struct {
+	ProductID int64 `json:"product_id"`
+	Delta     int   `json:"delta"`
 }
 
 func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsytoken, error) {
@@ -284,10 +290,11 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 }
 
 func getEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
-	var etsyproducts []etsyProduct
+
 	method := "GET"
 	httpclient := &http.Client{}
 	for _, l := range listings {
+		var etsyproducts []etsyProduct
 		var etsy_listing etsyListing
 		url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%d/inventory", l.ListingID)
 		req, err := http.NewRequest(method, url, nil)
@@ -314,18 +321,23 @@ func getEtsyInventoryListings(storename, etsy_shopid, clientid, token string, li
 		}
 		log.Infof("Got %d products in listing for %s", len(etsy_listing.Products), l.Title)
 		for _, p := range etsy_listing.Products {
-
+			p.ShopifyDomain = storename
 			p.ListingID = l.ListingID
 			p.ShopID = l.ShopID
 			p.Title = l.Title
 			p.Description = l.Description
 			etsyproducts = append(etsyproducts, p)
 		}
-	}
+		delta, err := saveEtsyProducts(storename, etsyproducts, client)
+		if err != nil {
+			log.Errorf("Error saving products to DB: %v", err)
+			return err
+		}
 
-	if err := saveEtsyProducts(storename, etsyproducts, client); err != nil {
-		log.Errorf("Error saving products to DB: %v", err)
-		return err
+		log.Infof("Completed write for products in listing %d", l.ListingID)
+		for _, d := range delta {
+			fmt.Printf("Delta for %d is %d", d.ProductID, d.Delta)
+		}
 	}
 
 	return nil
