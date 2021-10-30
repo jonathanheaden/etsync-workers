@@ -20,7 +20,7 @@ type etsyShop struct {
 
 type etsytoken struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty"`
-	shopify_domain       string             `bson:"shopify_domain"`
+	ShopifyDomain        string             `bson:"shopify_domain"`
 	EtsyOnBoarded        bool               `bson:"etsyOnBoarded"`
 	OnBoarded            bool               `bson:"onBoarded"`
 	EtsyCodeReference    string             `bson:"etsy_code_reference,omitempty"`

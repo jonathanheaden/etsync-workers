@@ -80,7 +80,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 			return etsytoken{}, err
 		}
 		token.EtsyOnBoarded = true
-		token.shopify_domain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
+		token.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
 
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
@@ -225,7 +225,7 @@ func setshopstock(storename string, items []StockItem, client *mongo.Client) err
 				"$set": bson.M{
 					"shopify_domain": storename,
 					"s_curr_stock":   item.Available,
-					"s_prev_stock": item.PriorAvailable,
+					"s_prev_stock":   item.PriorAvailable,
 					"s_inventory_id": item.InventoryID,
 					"s_location_id":  item.LocationID,
 				},

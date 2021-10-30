@@ -54,7 +54,7 @@ func main() {
 		log.Errorf("Error getting etsy token from db %v", err)
 		log.Fatal("Cannot get Etsy token")
 	}
-	log.Infof("Got Token for Etsy (shopify store %s)", e_token.shopify_domain)
+	log.Infof("Got Token for Etsy (shopify store %s)", e_token.ShopifyDomain)
 
 	etsyshopid, err := getUsersEtsyShops(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
 	if err != nil {
