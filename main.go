@@ -33,6 +33,22 @@ func main() {
 
 	token := getstoretoken(config.SHOP_NAME, client)
 
+	inventoryurl, err := getinventorylevels(config.SHOP_NAME, token)
+	if err != nil {
+		log.Fatalf("Unable to register query for inventory levels: %v", err)
+	}
+	if err = processinventorylevels(inventoryurl, config.SHOP_NAME, client); err != nil {
+		log.Fatalf("Unable to process inventory levels: %v", err)
+	}
+	productsurl, err := getproductvariants(config.SHOP_NAME, token)
+	if err != nil {
+		log.Fatalf("Unable to register query for products: %v", err)
+	}
+	if err = processproductlevels(productsurl, config.SHOP_NAME, client); err != nil {
+		log.Fatalf("Unable to process products: %v", err)
+	}
+
+	// get the etsy stock levels and apply any shopify changes
 	e_token, err := getetsytoken(config, client)
 	if err != nil {
 		log.Errorf("Error getting etsy token from db %v", err)
@@ -50,18 +66,5 @@ func main() {
 		log.Fatalf("Could not retrieve Etsy Listings %v", err)
 	}
 
-	inventoryurl, err := getinventorylevels(config.SHOP_NAME, token)
-	if err != nil {
-		log.Fatalf("Unable to register query for inventory levels: %v", err)
-	}
-	if err = processinventorylevels(inventoryurl, config.SHOP_NAME, client); err != nil {
-		log.Fatalf("Unable to process inventory levels: %v", err)
-	}
-	productsurl, err := getproductvariants(config.SHOP_NAME, token)
-	if err != nil {
-		log.Fatalf("Unable to register query for products: %v", err)
-	}
-	if err = processproductlevels(productsurl, config.SHOP_NAME, client); err != nil {
-		log.Fatalf("Unable to process products: %v", err)
-	}
+	//apply any etsy stock changes to shopify
 }
