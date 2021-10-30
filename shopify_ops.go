@@ -192,7 +192,9 @@ func getproductvariants(storeurl, token string) (string, error) {
 			log.Error("Exiting function as 4 minutes have expired")
 			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
-		time.Sleep(20 * time.Second)
+		if statusurl != "COMPLETED" {
+			time.Sleep(20 * time.Second)
+		}
 	}
 	return url, nil
 }
@@ -325,5 +327,3 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	log.Info(fmt.Sprintf("Writing %d products to DB", len(Items)))
 	return nil
 }
-
-// NOTE - should create a new object for each new shopify item to make sure there is no stale data
