@@ -103,6 +103,33 @@ type etsyListing struct {
 	SkuOnProperty      []int         `json:"sku_on_property"`
 }
 
+type EtsyAPIUpdate struct {
+	Products           []EtsyProductUpdate `json:"products`
+	PriceOnProperty    []interface{}       `json:"price_on_property"`
+	QuantityOnProperty []int               `json:"quantity_on_property"`
+	SkuOnProperty      []int               `json:"sku_on_property"`
+	Listing            interface{}         `json:"listing"`
+}
+
+type EtsyProductUpdate struct {
+	Sku            string                            `json:"sku"`
+	Offerings      []EtsyProductUpdateOffering       `json:"offerings"`
+	PropertyValues []EtsyProductUpdatePropertyValues `json:"property_values"`
+}
+
+type EtsyProductUpdateOffering struct {
+	Quantity  int     `json:"quantity"`
+	IsEnabled bool    `json:"is_enabled"`
+	Price     float64 `json:"price"`
+}
+
+type EtsyProductUpdatePropertyValues struct {
+	PropertyID   int      `json:"property_id"`
+	PropertyName string   `json:"property_name"`
+	ValueIds     []int    `json:"value_ids"`
+	Values       []string `json:"values"`
+}
+
 // type EtsyAPIUpdate struct {
 // 	ProductID int    `json:"product_id"`
 // 	Sku       string `json:"sku"`
