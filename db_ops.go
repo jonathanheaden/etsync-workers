@@ -34,6 +34,13 @@ type StockItem struct {
 	EtsyItemInitialised bool               `bson:"e_item_initialised"`
 }
 
+type StockReconciliationDelta struct {
+	EtsyDelta         map[int64]int  `json:"etsy_delta"`
+	ShopifyDelta      map[string]int `json:"shopify_delta"`
+	EstyHasChanges    bool           `json:"etsyhaschanges"`
+	ShopifyHasChanges bool           `json:"shopifyhaschanges"`
+}
+
 func getdatabases(client *mongo.Client) ([]string, error) {
 	var dblist []string
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
@@ -81,6 +88,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 		}
 		token.EtsyOnBoarded = true
 		token.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
+		log.Infof("Token retrieved from etsy api for %s", token.ShopifyDomain)
 
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
@@ -139,13 +147,15 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 // When we write the etsy inventory level to the DB we need to decide if this is the first time the
 // Etsy record is being written, if so then the current inventory level is the previous level
 // If this is not the first time then there  should be an inventory level so use that as the prior level
-// This function returns a delta list for the prducts in the listing
+// This function returns a delta list for the products in the listing
 // This should be returned as a struct with two independent sets of actions:
 // 1. a map of productid -> delta which gets applied to the Etsy API
 // 2. a map of shopify variant Ids -> delta which gets applied to Shopify API
-func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) ([]etsyDelta, error) {
+func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) (StockReconciliationDelta, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	var stockdelta []etsyDelta
+	var stockdelta StockReconciliationDelta
+	etsyDelta := make(map[int64]int)
+	shopifyDelta := make(map[string]int)
 	var existingRecord StockItem
 	stockCollection := client.Database("etync").Collection("stock")
 	for _, p := range products {
@@ -178,10 +188,16 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 			}
 			log.Infof("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
 			if existingRecord.Available != existingRecord.PriorAvailable {
-				stockdelta = append(stockdelta, etsyDelta{
-					ProductID: p.ProductID,
-					Delta:     (existingRecord.Available - existingRecord.PriorAvailable),
-				})
+				// stockdelta = append(stockdelta, etsyDelta{
+				// 	ProductID: p.ProductID,
+				// 	Delta:     (existingRecord.Available - existingRecord.PriorAvailable),
+				// })
+				stockdelta.EstyHasChanges = true
+				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
+			}
+			if updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"] {
+				stockdelta.ShopifyHasChanges = true
+				shopifyDelta[existingRecord.VariantID] = (p.Offerings[0].Quantity - existingRecord.EtsyQuantity)
 			}
 		}
 		update := bson.M{
@@ -195,6 +211,9 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 			continue
 		}
 	}
+	stockdelta.EtsyDelta = etsyDelta
+	stockdelta.ShopifyDelta = shopifyDelta
+
 	log.Infof("Success writing %d etsy listing details to Database", len(products))
 	return stockdelta, nil
 }
