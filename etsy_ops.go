@@ -257,7 +257,7 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 		return "", err
 	}
 	defer res.Body.Close()
-
+	log.Infof("Response for request to get User's Etsy Shops: %d", res.StatusCode)
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		log.Error(err)
@@ -310,13 +310,13 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 	}
 	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
 
-	if err = getEtsyInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
+	if err = reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
 
 	}
 	return nil
 }
 
-func getEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
+func reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
 
 	method := "GET"
 	httpclient := &http.Client{}
@@ -362,9 +362,48 @@ func getEtsyInventoryListings(storename, etsy_shopid, clientid, token string, li
 		}
 
 		log.Infof("Completed write for products in listing %d", l.ListingID)
-		for _, d := range delta {
-			fmt.Printf("Delta for %d is %d", d.ProductID, d.Delta)
+		// To write inventory back to etsy we need to follow guidance in https://developers.etsy.com/documentation/tutorials/listings/#updating-inventory
+		// To get the product array, call getListingInventory for the listing.
+		// From the getListingInventory response, remove the following fields: product_id, offering_id, scale_name and is_deleted.
+		// Also change the price array in offerings to be a decimal value instead of an array.
+		if delta.EstyHasChanges {
+			var apiUpdate EtsyAPIUpdate
+			apiUpdate.PriceOnProperty = etsy_listing.PriceOnProperty
+			apiUpdate.QuantityOnProperty = etsy_listing.QuantityOnProperty
+			apiUpdate.SkuOnProperty = etsy_listing.SkuOnProperty
+			for _, p := range etsy_listing.Products {
+				log.Infof("Preparing update for %d %s",p.ProductID, p.Title)
+				var epu EtsyProductUpdate
+				epu.Sku = p.Sku
+				var epuo EtsyProductUpdateOffering
+				if stockdelta, ok := delta.EtsyDelta[p.ProductID]; ok {
+					log.Infof("Product has stock level change required %d", stockdelta)
+					epuo.Quantity = p.Offerings[0].Quantity + stockdelta
+				} else {
+					epuo.Quantity = p.Offerings[0].Quantity
+				}
+				epuo.IsEnabled = p.Offerings[0].IsEnabled
+				epuo.Price = (float64(p.Offerings[0].Price.Amount) / float64(p.Offerings[0].Price.Divisor))
+				epu.Offerings = append(epu.Offerings, epuo)
+				for _, pv := range p.PropertyValues {
+					log.Infof("Adding property value %s", pv.PropertyName)
+					var epupv EtsyProductUpdatePropertyValues
+					epupv.PropertyID = pv.PropertyID
+					epupv.PropertyName = pv.PropertyName
+					epupv.ValueIds = pv.ValueIds
+					epupv.Values = pv.Values
+					epu.PropertyValues = append(epu.PropertyValues, epupv)
+				}
+				apiUpdate.Products = append(apiUpdate.Products, epu)
+			}
+			out, err := json.Marshal(apiUpdate)
+			if err != nil {
+				panic(err)
+			}
+			log.Info("Stock Changes detected")
+			fmt.Println(string(out))
 		}
+
 	}
 
 	return nil
