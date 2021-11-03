@@ -82,18 +82,19 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 		return token, nil
 	} else {
 		log.Info("New Etsy token required, sending request to etsy API")
-		token, err := getEtsyTokenFromAPI(config.ETSY_CLIENT_ID, config.ETSY_REDIRECT_URI, token)
+		rtoken, err := getEtsyTokenFromAPI(config.ETSY_CLIENT_ID, config.ETSY_REDIRECT_URI, token)
 		if err != nil {
 			return etsytoken{}, err
 		}
-		token.EtsyOnBoarded = true
-		token.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
-		log.Infof("Token retrieved from etsy api for %s with expiration %v", token.ShopifyDomain, token.EtsyTokenExpires)
+		rtoken.EtsyOnBoarded = true
+		rtoken.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
+		log.Infof("Token retrieved from etsy api for %s with expiration %v", rtoken.ShopifyDomain, rtoken.EtsyTokenExpires)
 
-		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
+		if err := writeEtsyToken(config.SHOP_NAME, rtoken, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
 			return etsytoken{}, err
 		}
+		token = rtoken
 	}
 	return token, nil
 
