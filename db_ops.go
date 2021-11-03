@@ -100,6 +100,20 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 
 }
 
+func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error){
+	var item StockItem
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	stockCollection := client.Database("etync").Collection("stock")
+	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
+
+	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
+		log.Infof("Error writing Etsy shop details %v", err)
+		return StockItem{},err
+	}
+	return item,nil
+	
+}
+
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
 	log.Info("Writing the etsy token to DB")
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
@@ -192,6 +206,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 				stockdelta.EstyHasChanges = true
 				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
 			}
+			
 			if updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"] {
 				stockdelta.ShopifyHasChanges = true
 				shopifyDelta[existingRecord.VariantID] = (p.Offerings[0].Quantity - existingRecord.EtsyQuantity)
@@ -219,11 +234,11 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	stockCollection := client.Database("etync").Collection("stock")
 	for _, item := range products {
-		filter := bson.M{"sku": item.Sku, "shopify_domain" : storename }
+		filter := bson.M{"sku": item.Sku, "shopify_domain": storename}
 		update := bson.M{
 			"$set": bson.M{
-				"e_curr_stock" : item.Offerings[0].Quantity,
-    			"e_prev_stock" : item.Offerings[0].Quantity,
+				"e_curr_stock": item.Offerings[0].Quantity,
+				"e_prev_stock": item.Offerings[0].Quantity,
 			},
 		}
 		opts := options.FindOneAndUpdate().SetUpsert(false)
@@ -231,8 +246,29 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 		result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
 		if result.Err() != nil {
 			log.Infof("No prior record found when inserting doc %s", result.Err())
-			return result.Err() 
+			return result.Err()
 		}
+	}
+	return nil
+}
+
+func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int, client *mongo.Client) error {
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	stockCollection := client.Database("etync").Collection("stock")
+	
+	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
+	update := bson.M{
+		"$set": bson.M{
+			"s_curr_stock": stocklevel,
+			"s_prev_stock": stocklevel,
+		},
+	}
+	opts := options.FindOneAndUpdate().SetUpsert(false)
+
+	result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
+	if result.Err() != nil {
+		log.Infof("No prior record found when inserting doc %s", result.Err())
+		return result.Err()
 	}
 	return nil
 }
