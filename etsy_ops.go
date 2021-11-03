@@ -317,10 +317,9 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 }
 
 
-func updateEtsyShopListing(listing_id, payloadstr, clientid, token string) error {
-	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%s/inventory", listing_id)
+func updateEtsyShopListing(listing_id int, payloadstr, clientid, token string) error {
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%d/inventory", listing_id)
 	method := "PUT"
-
 
 	payload := strings.NewReader(payloadstr)
 	
@@ -333,6 +332,7 @@ func updateEtsyShopListing(listing_id, payloadstr, clientid, token string) error
 		return err
 	}
 	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
 
 	res, err := httpclient.Do(req)
@@ -342,7 +342,7 @@ func updateEtsyShopListing(listing_id, payloadstr, clientid, token string) error
 	}
 	
 	if res.StatusCode != 200 {
-		log.Errorf("Failed to update inventory for listing %s. Got status code: %d",listing_id, res.StatusCode)
+		log.Errorf("Failed to update inventory for listing %d. Got status code: %d",listing_id, res.StatusCode)
 		return fmt.Errorf("Failed to update inventory with status %d",res.StatusCode)
 	}
 	return nil
@@ -428,15 +428,21 @@ func reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token stri
 				}
 				apiUpdate.Products = append(apiUpdate.Products, epu)
 			}
-			out, err := json.Marshal(apiUpdate)
+			payload, err := json.Marshal(apiUpdate)
 			if err != nil {
 				panic(err)
 			}
 			log.Info("Stock Changes detected")
-			log.Info(string(out))
+			log.Infof("Sending update to Etsy: %s",string(payload))
+			if err = updateEtsyShopListing(l.ListingID,string(payload),clientid, token); err != nil {
+				log.Errorf("Could not update etsy : %v", err)
+				continue
+			}
+			log.Infof("Successfully updated Etsy listing stock level for %d",l.ListingID)
+			if err = setEtsyStockLevelForProducts(storename, apiUpdate.Products, client); err != nil {
+				log.Errorf("failed to write Etsy Product stock to DB %v", err)
+			}
 		}
-
 	}
-
 	return nil
 }

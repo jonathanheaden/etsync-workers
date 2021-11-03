@@ -214,6 +214,28 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 	return stockdelta, nil
 }
 
+func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate, client *mongo.Client) error {
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	stockCollection := client.Database("etync").Collection("stock")
+	for _, item := range products {
+		filter := bson.M{"sku": item.Sku, "shopify_domain" : storename }
+		update := bson.M{
+			"$set": bson.M{
+				"e_curr_stock" : item.Offerings[0].Quantity,
+    			"e_prev_stock" : item.Offerings[0].Quantity,
+			},
+		}
+		opts := options.FindOneAndUpdate().SetUpsert(false)
+
+		result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
+		if result.Err() != nil {
+			log.Infof("No prior record found when inserting doc %s", result.Err())
+			return result.Err() 
+		}
+	}
+	return nil
+}
+
 func setshopstock(storename string, items []StockItem, client *mongo.Client) error {
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
