@@ -130,30 +130,6 @@ type EtsyProductUpdatePropertyValues struct {
 	Values       []string `json:"values"`
 }
 
-// type EtsyAPIUpdate struct {
-// 	ProductID int    `json:"product_id"`
-// 	Sku       string `json:"sku"`
-// 	IsDeleted bool   `json:"is_deleted"`
-// 	Offerings []struct {
-// 		OfferingID int  `json:"offering_id"`
-// 		Quantity   int  `json:"quantity"`
-// 		IsEnabled  bool `json:"is_enabled"`
-// 		IsDeleted  bool `json:"is_deleted"`
-// 		Price      struct {
-// 			Amount       int    `json:"amount"`
-// 			Divisor      int    `json:"divisor"`
-// 			CurrencyCode string `json:"currency_code"`
-// 		} `json:"price"`
-// 	} `json:"offerings"`
-// 	PropertyValues []struct {
-// 		PropertyID   int      `json:"property_id"`
-// 		PropertyName string   `json:"property_name"`
-// 		ScaleID      int      `json:"scale_id"`
-// 		ScaleName    string   `json:"scale_name"`
-// 		ValueIds     []int    `json:"value_ids"`
-// 		Values       []string `json:"values"`
-// 	} `json:"property_values"`
-// }
 type etsyListingUpdate struct {
 	Products []struct {
 		Sku       string `json:"sku"`
@@ -310,7 +286,7 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 	}
 	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
 
-	if err = reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
+	if err = reconcileInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
 
 	}
 	return nil
@@ -348,7 +324,7 @@ func updateEtsyShopListing(listing_id int, payloadstr, clientid, token string) e
 	return nil
 }
 
-func reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
+func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
 
 	method := "GET"
 	httpclient := &http.Client{}
