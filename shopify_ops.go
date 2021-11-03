@@ -260,7 +260,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
-			}).Info(fmt.Sprintf("Processing inventory file"))
+			}).Info(fmt.Sprintf("Processing inventory item"))
 			item := StockItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
@@ -338,7 +338,6 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 		if err != nil {
 			log.Errorf("Error getting record for %s from DB %v", k, err)
 		}
-		log.Infof("update for record %v", item)
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
 		newstock := item.Available + v
