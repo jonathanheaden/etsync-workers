@@ -104,7 +104,7 @@ type etsyListing struct {
 }
 
 type EtsyAPIUpdate struct {
-	Products           []EtsyProductUpdate `json:"products`
+	Products           []EtsyProductUpdate `json:"products"`
 	PriceOnProperty    []interface{}       `json:"price_on_property"`
 	QuantityOnProperty []int               `json:"quantity_on_property"`
 	SkuOnProperty      []int               `json:"sku_on_property"`
@@ -316,6 +316,38 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 	return nil
 }
 
+
+func updateEtsyShopListing(listing_id, payloadstr, clientid, token string) error {
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%s/inventory", listing_id)
+	method := "PUT"
+
+
+	payload := strings.NewReader(payloadstr)
+	
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, payload)
+	
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	
+	if res.StatusCode != 200 {
+		log.Errorf("Failed to update inventory for listing %s. Got status code: %d",listing_id, res.StatusCode)
+		return fmt.Errorf("Failed to update inventory with status %d",res.StatusCode)
+	}
+	return nil
+}
+
 func reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
 
 	method := "GET"
@@ -401,7 +433,7 @@ func reconcileEtsyInventoryListings(storename, etsy_shopid, clientid, token stri
 				panic(err)
 			}
 			log.Info("Stock Changes detected")
-			fmt.Println(string(out))
+			log.Info(string(out))
 		}
 
 	}
