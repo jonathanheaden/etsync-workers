@@ -88,7 +88,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 		}
 		token.EtsyOnBoarded = true
 		token.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
-		log.Infof("Token retrieved from etsy api for %s", token.ShopifyDomain)
+		log.Infof("Token retrieved from etsy api for %s with expiration %v", token.ShopifyDomain, token.EtsyTokenExpires)
 
 		if err := writeEtsyToken(config.SHOP_NAME, token, client); err != nil {
 			log.Errorf("Unable to store the etsy token in database! %v", err)
@@ -188,10 +188,6 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 			}
 			log.Infof("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
 			if existingRecord.Available != existingRecord.PriorAvailable {
-				// stockdelta = append(stockdelta, etsyDelta{
-				// 	ProductID: p.ProductID,
-				// 	Delta:     (existingRecord.Available - existingRecord.PriorAvailable),
-				// })
 				stockdelta.EstyHasChanges = true
 				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
 			}
