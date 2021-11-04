@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -174,6 +175,11 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 	var existingRecord StockItem
 	stockCollection := client.Database("etync").Collection("stock")
 	for _, p := range products {
+		var vdesc []string
+		for _,pv := range p.PropertyValues {
+			vstring := fmt.Sprintf("%s: %s",pv.PropertyName,strings.Join(pv.Values,"-"))
+			vdesc = append(vdesc, vstring)
+		}
 		updateRecord := bson.M{
 			"shop_id":        p.ShopID,
 			"product_title":  p.Title,
@@ -181,6 +187,8 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 			"sku":            p.Sku,
 			"shopify_domain": p.ShopifyDomain,
 			"e_curr_stock":   p.Offerings[0].Quantity,
+			"e_product_id":   p.ProductID,
+			"e_variation_description": strings.Join(vdesc,", "),
 		}
 		log.WithFields(log.Fields{
 			"Product_ID": p.ProductID,
