@@ -10,11 +10,17 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
+
+type etsyShop struct {
+	ShopID   int    `json:"shop_id"`
+	ShopName string `json:"shop_name"`
+}
 
 type etsytoken struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty"`
-	shopify_domain       string             `bson:"shopify_domain"`
+	ShopifyDomain        string             `bson:"shopify_domain"`
 	EtsyOnBoarded        bool               `bson:"etsyOnBoarded"`
 	OnBoarded            bool               `bson:"onBoarded"`
 	EtsyCodeReference    string             `bson:"etsy_code_reference,omitempty"`
@@ -39,13 +45,117 @@ type etsyTokenResponse struct {
 	RefreshToken string    `json:"refresh_token"`
 }
 
-// Sample etsy token response
-// {
-//     "access_token": "532690296.Zj7Ls5EGzuSo_VXXZkTNXHb_h-zVanu1lqRrXmaxZQvFqMqSl4xNxNZwV4zEwwkqhlFgLWOrXFKWa7V5NZSJtDMGIk",
-//     "token_type": "Bearer",
-//     "expires_in": 3600,
-//     "refresh_token": "532690296.R_JL6QMeLG19Et2tpS736GHHPMXn0qp5kCoZWC8hRGFFuT1xTOj1GvhrZFfPegDathMxcsxgmDqrS7taaJlGFuVg7M"
-// }
+type etsyShopListingResult struct {
+	ListingID                 int    `json:"listing_id"`
+	ShopID                    int    `json:"shop_id"`
+	Title                     string `json:"title"`
+	Description               string `json:"description"`
+	State                     string `json:"state"`
+	CreationTimestamp         int    `json:"creation_timestamp"`
+	EndingTimestamp           int    `json:"ending_timestamp"`
+	OriginalCreationTimestamp int    `json:"original_creation_timestamp"`
+	LastModifiedTimestamp     int    `json:"last_modified_timestamp"`
+	StateTimestamp            int    `json:"state_timestamp"`
+	Quantity                  int    `json:"quantity"` // <- this is the combined quantity for all variant products under this listing
+}
+
+type etsyShopListings struct {
+	Count   int                     `json:"count"`
+	Results []etsyShopListingResult `json:"results"`
+}
+
+type etsyOffering struct {
+	OfferingID int64 `json:"offering_id"`
+	Quantity   int   `json:"quantity"`
+	IsEnabled  bool  `json:"is_enabled"`
+	IsDeleted  bool  `json:"is_deleted"`
+	Price      struct {
+		Amount       int    `json:"amount"`
+		Divisor      int    `json:"divisor"`
+		CurrencyCode string `json:"currency_code"`
+	} `json:"price"`
+}
+
+type etsyProduct struct {
+	ListingID      int            `json:"listing_id"`
+	ShopID         int            `json:"shop_id"`
+	ShopifyDomain  string         `json:"shopify_domain"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	ProductID      int64          `json:"product_id"`
+	Sku            string         `json:"sku"`
+	IsDeleted      bool           `json:"is_deleted"`
+	Offerings      []etsyOffering `json:"offerings"`
+	PropertyValues []struct {
+		PropertyID   int         `json:"property_id"`
+		PropertyName string      `json:"property_name"`
+		ScaleID      interface{} `json:"scale_id"`
+		ScaleName    interface{} `json:"scale_name"`
+		ValueIds     []int       `json:"value_ids"`
+		Values       []string    `json:"values"`
+	} `json:"property_values"`
+}
+
+type etsyListing struct {
+	Products           []etsyProduct `json:"products"`
+	PriceOnProperty    []interface{} `json:"price_on_property"`
+	QuantityOnProperty []int         `json:"quantity_on_property"`
+	SkuOnProperty      []int         `json:"sku_on_property"`
+}
+
+type EtsyAPIUpdate struct {
+	Products           []EtsyProductUpdate `json:"products"`
+	PriceOnProperty    []interface{}       `json:"price_on_property"`
+	QuantityOnProperty []int               `json:"quantity_on_property"`
+	SkuOnProperty      []int               `json:"sku_on_property"`
+	Listing            interface{}         `json:"listing"`
+}
+
+type EtsyProductUpdate struct {
+	Sku            string                            `json:"sku"`
+	Offerings      []EtsyProductUpdateOffering       `json:"offerings"`
+	PropertyValues []EtsyProductUpdatePropertyValues `json:"property_values"`
+}
+
+type EtsyProductUpdateOffering struct {
+	Quantity  int     `json:"quantity"`
+	IsEnabled bool    `json:"is_enabled"`
+	Price     float64 `json:"price"`
+}
+
+type EtsyProductUpdatePropertyValues struct {
+	PropertyID   int      `json:"property_id"`
+	PropertyName string   `json:"property_name"`
+	ValueIds     []int    `json:"value_ids"`
+	Values       []string `json:"values"`
+}
+
+type etsyListingUpdate struct {
+	Products []struct {
+		Sku       string `json:"sku"`
+		Offerings []struct {
+			Quantity  int     `json:"quantity"`
+			IsEnabled bool    `json:"is_enabled"`
+			Price     float64 `json:"price"`
+		} `json:"offerings"`
+		PropertyValues []struct {
+			PropertyID   int         `json:"property_id"`
+			PropertyName string      `json:"property_name"`
+			ScaleID      interface{} `json:"scale_id"`
+			ValueIds     []int       `json:"value_ids"`
+			Values       []string    `json:"values"`
+		} `json:"property_values"`
+	} `json:"products"`
+	PriceOnProperty    []interface{} `json:"price_on_property"`
+	QuantityOnProperty []int         `json:"quantity_on_property"`
+	SkuOnProperty      []int         `json:"sku_on_property"`
+	Listing            interface{}   `json:"listing"`
+}
+
+type etsyDelta struct {
+	ProductID int64 `json:"product_id"`
+	Delta     int   `json:"delta"`
+}
 
 func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsytoken, error) {
 	var response etsyTokenResponse
@@ -98,4 +208,229 @@ func getEtsyTokenFromAPI(clientid, redirecturi string, etoken etsytoken) (etsyto
 	etoken.EtsyAccessToken = response.AccessToken
 	etoken.EtsyRefreshToken = response.RefreshToken
 	return etoken, nil
+}
+
+func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) (string, error) {
+	var etsy_shop etsyShop
+	user := strings.Split(token, ".")[0]
+	log.Infof("Getting shops for user id %s", user)
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/users/%s/shops", user)
+	method := "GET"
+
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	defer res.Body.Close()
+	log.Infof("Response for request to get User's Etsy Shops: %d", res.StatusCode)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	if err := json.Unmarshal(body, &etsy_shop); err != nil {
+		log.Errorf("Error with response unmarshall: %v", err)
+		return "", err
+	}
+
+	if err = saveEtsyShop(storename, etsy_shop, client); err != nil {
+		log.Errorf("Error saving shop to DB: %v", err)
+		return "", err
+	}
+	log.Infof("Got shop id %d for shop name %s", etsy_shop.ShopID, etsy_shop.ShopName)
+	return fmt.Sprintf("%d", etsy_shop.ShopID), nil
+}
+
+func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client *mongo.Client) error {
+	var shoplistings etsyShopListings
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/shops/%s/listings", etsy_shopid)
+	method := "GET"
+
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if err := json.Unmarshal(body, &shoplistings); err != nil {
+		log.Errorf("Error with response unmarshall: %v", err)
+		return err
+	}
+	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
+
+	if err = reconcileInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
+
+	}
+	return nil
+}
+
+func updateEtsyShopListing(listing_id int, payloadstr, clientid, token string) error {
+	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%d/inventory", listing_id)
+	method := "PUT"
+
+	payload := strings.NewReader(payloadstr)
+
+	httpclient := &http.Client{}
+	req, err := http.NewRequest(method, url, payload)
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.Header.Add("x-api-key", clientid)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	if res.StatusCode != 200 {
+		log.Errorf("Failed to update inventory for listing %d. Got status code: %d", listing_id, res.StatusCode)
+		return fmt.Errorf("Failed to update inventory with status %d", res.StatusCode)
+	}
+	return nil
+}
+
+func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
+
+	method := "GET"
+	httpclient := &http.Client{}
+	for _, l := range listings {
+		var etsyproducts []etsyProduct
+		var etsy_listing etsyListing
+		url := fmt.Sprintf("https://openapi.etsy.com/v3/application/listings/%d/inventory", l.ListingID)
+		req, err := http.NewRequest(method, url, nil)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		req.Header.Add("x-api-key", clientid)
+		req.Header.Add("authorization", fmt.Sprintf("Bearer %s", token))
+		res, err := httpclient.Do(req)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+		defer res.Body.Close()
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		if err := json.Unmarshal(body, &etsy_listing); err != nil {
+			log.Errorf("Error with response unmarshall: %v", err)
+			return err
+		}
+		log.Infof("Got %d products in listing for %s", len(etsy_listing.Products), l.Title)
+		for _, p := range etsy_listing.Products {
+			p.ShopifyDomain = storename
+			p.ListingID = l.ListingID
+			p.ShopID = l.ShopID
+			p.Title = l.Title
+			p.Description = l.Description
+			etsyproducts = append(etsyproducts, p)
+		}
+		delta, err := saveEtsyProducts(storename, etsyproducts, client)
+		if err != nil {
+			log.Errorf("Error saving products to DB: %v", err)
+			return err
+		}
+
+		log.Infof("Completed write for products in listing %d", l.ListingID)
+		// To write inventory back to etsy we need to follow guidance in https://developers.etsy.com/documentation/tutorials/listings/#updating-inventory
+		// To get the product array, call getListingInventory for the listing.
+		// From the getListingInventory response, remove the following fields: product_id, offering_id, scale_name and is_deleted.
+		// Also change the price array in offerings to be a decimal value instead of an array.
+		if delta.EstyHasChanges {
+			if err = reconcileEtsyStockLevel(storename, clientid, token, l.ListingID, etsy_listing, delta, client); err != nil {
+				log.Error(err)
+			}
+		}
+		if delta.ShopifyHasChanges {
+			stoken := getstoretoken(storename, client)
+			if err = reconcileShopifyStockLevel(storename, clientid, stoken, delta, client); err != nil {
+				log.Error(err)
+			}
+		}
+
+	}
+	return nil
+}
+
+func reconcileEtsyStockLevel(storename, clientid, token string, ListingID int, etsy_listing etsyListing, delta StockReconciliationDelta, client *mongo.Client) error {
+	var apiUpdate EtsyAPIUpdate
+	apiUpdate.PriceOnProperty = etsy_listing.PriceOnProperty
+	apiUpdate.QuantityOnProperty = etsy_listing.QuantityOnProperty
+	apiUpdate.SkuOnProperty = etsy_listing.SkuOnProperty
+	for _, p := range etsy_listing.Products {
+		log.Infof("Preparing update for %d %s", p.ProductID, p.Title)
+		var epu EtsyProductUpdate
+		epu.Sku = p.Sku
+		var epuo EtsyProductUpdateOffering
+		if stockdelta, ok := delta.EtsyDelta[p.ProductID]; ok {
+			log.Infof("Product has stock level change required %d", stockdelta)
+			epuo.Quantity = p.Offerings[0].Quantity + stockdelta
+		} else {
+			epuo.Quantity = p.Offerings[0].Quantity
+		}
+		epuo.IsEnabled = p.Offerings[0].IsEnabled
+		epuo.Price = (float64(p.Offerings[0].Price.Amount) / float64(p.Offerings[0].Price.Divisor))
+		epu.Offerings = append(epu.Offerings, epuo)
+		for _, pv := range p.PropertyValues {
+			log.Infof("Adding property value %s", pv.PropertyName)
+			var epupv EtsyProductUpdatePropertyValues
+			epupv.PropertyID = pv.PropertyID
+			epupv.PropertyName = pv.PropertyName
+			epupv.ValueIds = pv.ValueIds
+			epupv.Values = pv.Values
+			epu.PropertyValues = append(epu.PropertyValues, epupv)
+		}
+		apiUpdate.Products = append(apiUpdate.Products, epu)
+	}
+	payload, err := json.Marshal(apiUpdate)
+	if err != nil {
+		panic(err)
+	}
+	log.Info("Stock Changes detected")
+	log.Infof("Sending update to Etsy: %s", string(payload))
+	if err = updateEtsyShopListing(ListingID, string(payload), clientid, token); err != nil {
+		log.Errorf("Could not update etsy : %v", err)
+		return err
+	}
+	log.Infof("Successfully updated Etsy listing stock level for %d", ListingID)
+	if err = setEtsyStockLevelForProducts(storename, apiUpdate.Products, client); err != nil {
+		log.Errorf("failed to write Etsy Product stock to DB %v", err)
+	}
+	return nil
 }

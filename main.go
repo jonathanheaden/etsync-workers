@@ -33,13 +33,6 @@ func main() {
 
 	token := getstoretoken(config.SHOP_NAME, client)
 
-	e_token, err := getetsytoken(config, client)
-	if err != nil {
-		log.Errorf("Error getting etsy token from db %v", err)
-		log.Fatal("Cannot get Etsy token")
-	}
-	log.Infof("Got Token for Etsy (shopify store %s)", e_token.shopify_domain)
-
 	inventoryurl, err := getinventorylevels(config.SHOP_NAME, token)
 	if err != nil {
 		log.Fatalf("Unable to register query for inventory levels: %v", err)
@@ -54,4 +47,24 @@ func main() {
 	if err = processproductlevels(productsurl, config.SHOP_NAME, client); err != nil {
 		log.Fatalf("Unable to process products: %v", err)
 	}
+
+	// get the etsy stock levels and apply any shopify changes
+	e_token, err := getetsytoken(config, client)
+	if err != nil {
+		log.Errorf("Error getting etsy token from db %v", err)
+		log.Fatal("Cannot get Etsy token")
+	}
+	log.Infof("Got Token for Etsy (shopify store %s) with expiration time %v", e_token.ShopifyDomain, e_token.EtsyTokenExpires)
+
+	etsyshopid, err := getUsersEtsyShops(config.SHOP_NAME, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	if err != nil {
+		log.Fatalf("Could not retrieve users Etsy Shops %v", err)
+	}
+
+	err = getEtsyShopListings(config.SHOP_NAME, etsyshopid, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	if err != nil {
+		log.Fatalf("Could not retrieve Etsy Listings %v", err)
+	}
+
+	//apply any etsy stock changes to shopify
 }

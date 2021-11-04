@@ -10,7 +10,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -79,20 +78,6 @@ type InventoryLevel struct {
 	ID          string    `json:"id"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	InventoryID string    `json:"__parentId"`
-}
-
-type ShopifyItem struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty"`
-	ItemType       string             `bson:"itemtype"`
-	Available      int                `bson:"s_curr_stock"`
-	PriorAvailable int                `bson:"s_prev_stock"`
-	InventoryID    string             `bson:"s_inventory_id,omitempty"`
-	LocationID     string             `bson:"s_location_id,omitempty"`
-	Parent         string             `bson:"s_parent_product,omitempty"`
-	ParentID       string             `bson:"s_parent_product_id,omitempty"`
-	SKU            string             `bson:"sku,omitempty"`
-	VariantID      string             `bson:"s_variant_id,omitempty"`
-	VariantName    string             `bson:"s_variant_name,omitempty`
 }
 
 type Product struct {
@@ -207,7 +192,9 @@ func getproductvariants(storeurl, token string) (string, error) {
 			log.Error("Exiting function as 4 minutes have expired")
 			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
-		time.Sleep(20 * time.Second)
+		if statusurl != "COMPLETED" {
+			time.Sleep(20 * time.Second)
+		}
 	}
 	return url, nil
 }
@@ -246,7 +233,7 @@ func getinventorylevels(storeurl, token string) (string, error) {
 func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
-	var Items []ShopifyItem
+	var Items []StockItem
 
 	response, err := http.Get(url)
 
@@ -273,8 +260,9 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
-			}).Info(fmt.Sprintf("Processing inventory file"))
-			item := ShopifyItem{
+
+			}).Info(fmt.Sprintf("Processing inventory item"))
+			item := StockItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
 				LocationID:  inventorylevel.Location.ID,
@@ -296,7 +284,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 
 func processproductlevels(url, storename string, client *mongo.Client) error {
 	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
-	var Items []ShopifyItem
+	var Items []StockItem
 
 	response, err := http.Get(url)
 
@@ -318,7 +306,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 			continue
 		}
 		if productvariant.InventoryManagement == "SHOPIFY" {
-			item := ShopifyItem{
+			item := StockItem{
 				InventoryID: productvariant.InventoryItem.ID,
 				ItemType:    "productvariant",
 				VariantName: productvariant.DisplayName,
@@ -341,4 +329,45 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	return nil
 }
 
-// NOTE - should create a new object for each new shopify item to make sure there is no stale data
+func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, client *mongo.Client) error {
+	url := "https://etsync.myshopify.com/admin/api/2020-10/inventory_levels/set.json"
+	method := "POST"
+	
+	for k,v := range delta.ShopifyDelta {
+		log.Infof("Update stock for %s by %d",k,v)
+		item, err := getShopifyStockItem(storename, k,client)
+		if err != nil {
+			log.Errorf("Error getting record for %s from DB %v", k, err)
+		}
+		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
+		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
+		newstock := item.Available + v
+		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d",loc,i,newstock))
+	  
+		httpclient := &http.Client {
+		}
+		req, err := http.NewRequest(method, url, payload)
+	  
+		if err != nil {
+		  log.Error(err)
+		  continue
+		}
+		req.Header.Add("X-Shopify-Access-Token", token)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	  
+		res, err := httpclient.Do(req)
+		if err != nil {
+			log.Error(err)
+		  continue
+		}
+		if res.StatusCode != 200 {
+			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d",k,res.StatusCode)
+		}
+		if err = setShopifyStockLevelForVariant(storename,k,newstock, client); err != nil {
+			log.Error(err)
+			
+		}
+
+	}
+	return nil
+}
