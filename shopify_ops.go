@@ -260,6 +260,7 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
+
 			}).Info(fmt.Sprintf("Processing inventory item"))
 			item := StockItem{
 				ItemType:    "inventory",
