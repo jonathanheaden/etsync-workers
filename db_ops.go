@@ -101,7 +101,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 
 }
 
-func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error){
+func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error) {
 	var item StockItem
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	stockCollection := client.Database("etync").Collection("stock")
@@ -109,10 +109,10 @@ func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (Sto
 
 	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
 		log.Infof("Error writing Etsy shop details %v", err)
-		return StockItem{},err
+		return StockItem{}, err
 	}
-	return item,nil
-	
+	return item, nil
+
 }
 
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
@@ -176,19 +176,19 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 	stockCollection := client.Database("etync").Collection("stock")
 	for _, p := range products {
 		var vdesc []string
-		for _,pv := range p.PropertyValues {
-			vstring := fmt.Sprintf("%s: %s",pv.PropertyName,strings.Join(pv.Values,"-"))
+		for _, pv := range p.PropertyValues {
+			vstring := fmt.Sprintf("%s: %s", pv.PropertyName, strings.Join(pv.Values, "-"))
 			vdesc = append(vdesc, vstring)
 		}
 		updateRecord := bson.M{
-			"shop_id":        p.ShopID,
-			"product_title":  p.Title,
-			"description":    p.Description,
-			"sku":            p.Sku,
-			"shopify_domain": p.ShopifyDomain,
-			"e_curr_stock":   p.Offerings[0].Quantity,
-			"e_product_id":   p.ProductID,
-			"e_variation_description": strings.Join(vdesc,", "),
+			"shop_id":                 p.ShopID,
+			"e_product_title":         p.Title,
+			"e_description":           p.Description,
+			"sku":                     p.Sku,
+			"shopify_domain":          p.ShopifyDomain,
+			"e_curr_stock":            p.Offerings[0].Quantity,
+			"e_product_id":            p.ProductID,
+			"e_variation_description": strings.Join(vdesc, ", "),
 		}
 		log.WithFields(log.Fields{
 			"Product_ID": p.ProductID,
@@ -214,7 +214,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 				stockdelta.EstyHasChanges = true
 				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
 			}
-			
+
 			if updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"] {
 				stockdelta.ShopifyHasChanges = true
 				shopifyDelta[existingRecord.VariantID] = (p.Offerings[0].Quantity - existingRecord.EtsyQuantity)
@@ -263,7 +263,7 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int, client *mongo.Client) error {
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	stockCollection := client.Database("etync").Collection("stock")
-	
+
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
 	update := bson.M{
 		"$set": bson.M{

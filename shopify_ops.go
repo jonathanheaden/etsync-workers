@@ -260,7 +260,6 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
-
 			}).Info(fmt.Sprintf("Processing inventory item"))
 			item := StockItem{
 				ItemType:    "inventory",
@@ -332,40 +331,39 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, client *mongo.Client) error {
 	url := "https://etsync.myshopify.com/admin/api/2020-10/inventory_levels/set.json"
 	method := "POST"
-	
-	for k,v := range delta.ShopifyDelta {
-		log.Infof("Update stock for %s by %d",k,v)
-		item, err := getShopifyStockItem(storename, k,client)
+
+	for k, v := range delta.ShopifyDelta {
+		log.Infof("Update stock for %s by %d", k, v)
+		item, err := getShopifyStockItem(storename, k, client)
 		if err != nil {
 			log.Errorf("Error getting record for %s from DB %v", k, err)
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
 		newstock := item.Available + v
-		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d",loc,i,newstock))
-	  
-		httpclient := &http.Client {
-		}
+		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, newstock))
+
+		httpclient := &http.Client{}
 		req, err := http.NewRequest(method, url, payload)
-	  
+
 		if err != nil {
-		  log.Error(err)
-		  continue
+			log.Error(err)
+			continue
 		}
 		req.Header.Add("X-Shopify-Access-Token", token)
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	  
+
 		res, err := httpclient.Do(req)
 		if err != nil {
 			log.Error(err)
-		  continue
+			continue
 		}
 		if res.StatusCode != 200 {
-			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d",k,res.StatusCode)
+			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
 		}
-		if err = setShopifyStockLevelForVariant(storename,k,newstock, client); err != nil {
+		if err = setShopifyStockLevelForVariant(storename, k, newstock, client); err != nil {
 			log.Error(err)
-			
+
 		}
 
 	}
