@@ -44,7 +44,7 @@ type StockReconciliationDelta struct {
 
 func getdatabases(client *mongo.Client) ([]string, error) {
 	var dblist []string
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	dblist, err := client.ListDatabaseNames(ctx, bson.M{})
 	if err != nil {
 		log.Warn(err)
@@ -54,9 +54,9 @@ func getdatabases(client *mongo.Client) ([]string, error) {
 }
 
 func getstoretoken(storename string, client *mongo.Client) string {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	var doc bson.M
-	collection := client.Database("etync").Collection("shops")
+	collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", storename}}
 	if err := collection.FindOne(ctx, filter).Decode(&doc); err != nil {
 		log.Warn(err)
@@ -67,9 +67,9 @@ func getstoretoken(storename string, client *mongo.Client) string {
 }
 
 func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	var token etsytoken
-	collection := client.Database("etync").Collection("shops")
+	collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", config.SHOP_NAME}}
 	if err := collection.FindOne(ctx, filter).Decode(&token); err != nil {
 		log.Warn(err)
@@ -103,8 +103,8 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 
 func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error) {
 	var item StockItem
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	stockCollection := client.Database("etync").Collection("stock")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
 
 	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
@@ -117,8 +117,8 @@ func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (Sto
 
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
 	log.Info("Writing the etsy token to DB")
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	shop_collection := client.Database("etync").Collection("shops")
+	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+	shop_collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", storename}}
 	update := bson.M{
 		"$set": bson.M{
@@ -140,8 +140,8 @@ func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) err
 }
 
 func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	shop_collection := client.Database("etync").Collection("shops")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	shop_collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", storename}}
 	update := bson.M{
 		"$set": bson.M{
@@ -168,12 +168,12 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 // 1. a map of productid -> delta which gets applied to the Etsy API
 // 2. a map of shopify variant Ids -> delta which gets applied to Shopify API
 func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) (StockReconciliationDelta, error) {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	var stockdelta StockReconciliationDelta
 	etsyDelta := make(map[int64]int)
 	shopifyDelta := make(map[string]int)
 	var existingRecord StockItem
-	stockCollection := client.Database("etync").Collection("stock")
+	stockCollection := client.Database("etsync").Collection("stock")
 	for _, p := range products {
 		var vdesc []string
 		for _, pv := range p.PropertyValues {
@@ -239,8 +239,8 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 }
 
 func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	stockCollection := client.Database("etync").Collection("stock")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
 	for _, item := range products {
 		filter := bson.M{"sku": item.Sku, "shopify_domain": storename}
 		update := bson.M{
@@ -261,8 +261,8 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 }
 
 func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	stockCollection := client.Database("etync").Collection("stock")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
 
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
 	update := bson.M{
@@ -283,8 +283,8 @@ func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int,
 
 func setshopstock(storename string, items []StockItem, client *mongo.Client) error {
 
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	stockCollection := client.Database("etync").Collection("stock")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
 	for _, item := range items {
 		var existingRecord StockItem
 		var update bson.M
