@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -252,7 +253,7 @@ func getUsersEtsyShops(storename, clientid, token string, client *mongo.Client) 
 	return fmt.Sprintf("%d", etsy_shop.ShopID), nil
 }
 
-func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client *mongo.Client) error {
+func getAndSetEtsyShopListings(storename, etsy_shopid, clientid, token string, eSkusToSet map[int]string, overrideStock map[string]int, client *mongo.Client) error {
 	var shoplistings etsyShopListings
 	url := fmt.Sprintf("https://openapi.etsy.com/v3/application/shops/%s/listings", etsy_shopid)
 	method := "GET"
@@ -285,8 +286,7 @@ func getEtsyShopListings(storename, etsy_shopid, clientid, token string, client 
 		return err
 	}
 	log.Infof("Got %d shop listings back from Etsy", shoplistings.Count)
-
-	if err = reconcileInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, client); err != nil {
+	if err = reconcileInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, eSkusToSet, overrideStock, client); err != nil {
 
 	}
 	return nil
@@ -322,7 +322,7 @@ func updateEtsyShopListing(listing_id int, payloadstr, clientid, token string) e
 	return nil
 }
 
-func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, client *mongo.Client) error {
+func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, listings []etsyShopListingResult, eSkusToSet map[int]string, overrideStock map[string]int, client *mongo.Client) error {
 
 	method := "GET"
 	httpclient := &http.Client{}
@@ -353,7 +353,13 @@ func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, 
 			return err
 		}
 		log.Infof("Got %d products in listing for %s", len(etsy_listing.Products), l.Title)
+		productlist := new(bytes.Buffer)
+		for _, product := range etsy_listing.Products {
+			fmt.Fprintf(productlist, "[ProductID %d SKU %s], ", product.ProductID, product.Sku)
+		}
+		log.Debug(fmt.Sprintf("Products in listing: %s", productlist))
 		for _, p := range etsy_listing.Products {
+
 			p.ShopifyDomain = storename
 			p.ListingID = l.ListingID
 			p.ShopID = l.ShopID
@@ -361,7 +367,7 @@ func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, 
 			p.Description = l.Description
 			etsyproducts = append(etsyproducts, p)
 		}
-		delta, err := saveEtsyProducts(storename, etsyproducts, client)
+		delta, err := saveEtsyProducts(storename, etsyproducts, eSkusToSet, overrideStock, client)
 		if err != nil {
 			log.Errorf("Error saving products to DB: %v", err)
 			return err
@@ -373,7 +379,7 @@ func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, 
 		// From the getListingInventory response, remove the following fields: product_id, offering_id, scale_name and is_deleted.
 		// Also change the price array in offerings to be a decimal value instead of an array.
 		if delta.EstyHasChanges {
-			if err = reconcileEtsyStockLevel(storename, clientid, token, l.ListingID, etsy_listing, delta, client); err != nil {
+			if err = reconcileEtsyStockLevel(storename, clientid, token, l.ListingID, etsy_listing, delta, eSkusToSet, overrideStock, client); err != nil {
 				log.Error(err)
 			}
 		}
@@ -388,7 +394,7 @@ func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, 
 	return nil
 }
 
-func reconcileEtsyStockLevel(storename, clientid, token string, ListingID int, etsy_listing etsyListing, delta StockReconciliationDelta, client *mongo.Client) error {
+func reconcileEtsyStockLevel(storename, clientid, token string, ListingID int, etsy_listing etsyListing, delta StockReconciliationDelta, eSkusToSet map[int]string, overrideStock map[string]int, client *mongo.Client) error {
 	var apiUpdate EtsyAPIUpdate
 	apiUpdate.PriceOnProperty = etsy_listing.PriceOnProperty
 	apiUpdate.QuantityOnProperty = etsy_listing.QuantityOnProperty
@@ -396,11 +402,18 @@ func reconcileEtsyStockLevel(storename, clientid, token string, ListingID int, e
 	for _, p := range etsy_listing.Products {
 		log.Infof("Preparing update for %d %s", p.ProductID, p.Title)
 		var epu EtsyProductUpdate
-		epu.Sku = p.Sku
+		if skutoset, ok := eSkusToSet[int(p.ProductID)]; ok {
+			epu.Sku = skutoset
+		} else {
+			epu.Sku = p.Sku
+		}
 		var epuo EtsyProductUpdateOffering
 		if stockdelta, ok := delta.EtsyDelta[p.ProductID]; ok {
 			log.Infof("Product has stock level change required %d", stockdelta)
 			epuo.Quantity = p.Offerings[0].Quantity + stockdelta
+		} else if stockset, ok := overrideStock[p.Sku]; ok {
+			log.Infof("Product has stock level change required (set via app) %d", stockset)
+			epuo.Quantity = stockset
 		} else {
 			epuo.Quantity = p.Offerings[0].Quantity
 		}

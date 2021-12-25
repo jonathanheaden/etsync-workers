@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,6 +14,10 @@ import (
 var (
 	client *mongo.Client
 )
+
+func init() {
+	log.SetLevel(log.DebugLevel)
+}
 
 func main() {
 
@@ -30,6 +36,25 @@ func main() {
 	}
 
 	defer client.Disconnect(ctx)
+
+	overridestock, e := getOverrides(config.SHOP_NAME, client)
+	if e != nil {
+		log.Error(e)
+	}
+	eSkusToSet, e := getItemsToLink(config.SHOP_NAME, client)
+	if e != nil {
+		log.Error(e)
+	}
+	bstock := new(bytes.Buffer)
+	for key, value := range overridestock {
+		fmt.Fprintf(bstock, "%s=%d ", key, value)
+	}
+	bsku := new(bytes.Buffer)
+	for key, value := range eSkusToSet {
+		fmt.Fprintf(bsku, "%d=%s ", key, value)
+	}
+	log.Infof("Items for which we need to set stock levels: %v", bstock)
+	log.Infof("Etsy Items for which we need to set the sku: %v", bsku)
 
 	token := getstoretoken(config.SHOP_NAME, client)
 
@@ -61,7 +86,7 @@ func main() {
 		log.Fatalf("Could not retrieve users Etsy Shops %v", err)
 	}
 
-	err = getEtsyShopListings(config.SHOP_NAME, etsyshopid, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, client)
+	err = getAndSetEtsyShopListings(config.SHOP_NAME, etsyshopid, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, eSkusToSet, overridestock, client)
 	if err != nil {
 		log.Fatalf("Could not retrieve Etsy Listings %v", err)
 	}
