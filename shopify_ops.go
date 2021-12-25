@@ -299,7 +299,6 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	for scanner.Scan() {
 		var productvariant ProductVariant
 		count++
-		log.Debug(fmt.Sprintf("Processing products file line %d", count))
 		if err := json.Unmarshal(scanner.Bytes(), &productvariant); err != nil {
 			log.Warn("Problem scanning line")
 			continue
