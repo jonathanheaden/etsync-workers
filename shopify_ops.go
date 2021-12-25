@@ -327,11 +327,12 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 	return nil
 }
 
-func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, client *mongo.Client) error {
+func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, overrideStock map[string]int, client *mongo.Client) error {
 	url := "https://etsync.myshopify.com/admin/api/2020-10/inventory_levels/set.json"
 	method := "POST"
 
 	for k, v := range delta.ShopifyDelta {
+		var newstock int
 		log.Infof("Update stock for %s by %d", k, v)
 		item, err := getShopifyStockItem(storename, k, client)
 		if err != nil {
@@ -339,7 +340,12 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
-		newstock := item.Available + v
+		if stockset, ok := overrideStock[item.SKU]; ok {
+			newstock = stockset
+		} else {
+			newstock = item.Available + v
+		}
+		log.Debugf("Updating shopify for item sku %s new stock %d",item.SKU, newstock)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, newstock))
 
 		httpclient := &http.Client{}
@@ -365,6 +371,42 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 
 		}
 
+	}
+	// need to handle cases where the override is set but that sku is not in the regular stock delta
+	// this could result in double handing but shouldn't be excessive. may need rework as tech debt
+	for k, v := range overrideStock {
+		item, err := getShopifyStockItemBySku(storename, k, client)
+		if err != nil {
+			log.Errorf("Error getting record for %s from DB %v", k, err)
+		}
+		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
+		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
+		
+		log.Debugf("Updating shopify for item sku %s new stock %d",item.SKU, v)
+		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, v))
+
+		httpclient := &http.Client{}
+		req, err := http.NewRequest(method, url, payload)
+
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		req.Header.Add("X-Shopify-Access-Token", token)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+		res, err := httpclient.Do(req)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		if res.StatusCode != 200 {
+			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
+		}
+		if err = setShopifyStockLevelForVariant(storename, item.VariantID, v, client); err != nil {
+			log.Error(err)
+
+		}
 	}
 	return nil
 }

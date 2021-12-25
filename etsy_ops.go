@@ -385,7 +385,7 @@ func reconcileInventoryListings(storename, etsy_shopid, clientid, token string, 
 		}
 		if delta.ShopifyHasChanges {
 			stoken := getstoretoken(storename, client)
-			if err = reconcileShopifyStockLevel(storename, clientid, stoken, delta, client); err != nil {
+			if err = reconcileShopifyStockLevel(storename, clientid, stoken, delta, overrideStock, client); err != nil {
 				log.Error(err)
 			}
 		}
