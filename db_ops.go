@@ -181,6 +181,22 @@ func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (Sto
 
 }
 
+func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (StockItem, error) {
+	var item StockItem
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
+	filter := bson.D{{"shopify_domain", storename}, {"sku", Sku}}
+
+	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
+		log.Infof("Error writing Etsy shop details %v", err)
+		return StockItem{}, err
+	}
+	return item, nil
+
+}
+
+
+
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
 	log.Info("Writing the etsy token to DB")
 	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
