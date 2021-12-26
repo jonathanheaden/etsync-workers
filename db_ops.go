@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -14,25 +15,27 @@ import (
 )
 
 type StockItem struct {
-	ID                  primitive.ObjectID `bson:"_id,omitempty"`
-	ShopifyDomain       string             `bson:shopify_domain,omitempty`
-	ItemType            string             `bson:"itemtype,omitempty"`
-	Available           int                `bson:"s_curr_stock"`
-	PriorAvailable      int                `bson:"s_prev_stock"`
-	InventoryID         string             `bson:"s_inventory_id,omitempty"`
-	LocationID          string             `bson:"s_location_id,omitempty"`
-	Parent              string             `bson:"s_parent_product,omitempty"`
-	ParentID            string             `bson:"s_parent_product_id,omitempty"`
-	SKU                 string             `bson:"sku,omitempty"`
-	VariantID           string             `bson:"s_variant_id,omitempty"`
-	VariantName         string             `bson:"s_variant_name,omitempty`
-	EtsyProductID       int                `bson:"e_product_id,omitempty"`
-	EtsyDescription     string             `bson:"e_description,omitempty"`
-	EtsyProductTitle    string             `bson:"e_product_title,omitempty"`
-	EtsyShopID          int                `bson:"e_shop_id,omitempty"`
-	EtsyQuantity        int                `bson:"e_curr_stock"`
-	EtsyPriorQuantity   int                `bson:"e_prev_stock"`
-	EtsyItemInitialised bool               `bson:"e_item_initialised"`
+	ID                     primitive.ObjectID `bson:"_id,omitempty"`
+	ShopifyDomain          string             `bson:shopify_domain,omitempty`
+	ItemType               string             `bson:"itemtype,omitempty"`
+	Available              int                `bson:"s_curr_stock"`
+	PriorAvailable         int                `bson:"s_prev_stock"`
+	InventoryID            string             `bson:"s_inventory_id,omitempty"`
+	LocationID             string             `bson:"s_location_id,omitempty"`
+	Parent                 string             `bson:"s_parent_product,omitempty"`
+	ParentID               string             `bson:"s_parent_product_id,omitempty"`
+	SKU                    string             `bson:"sku,omitempty"`
+	VariantID              string             `bson:"s_variant_id,omitempty"`
+	VariantName            string             `bson:"s_variant_name,omitempty`
+	EtsyProductID          int                `bson:"e_product_id,omitempty"`
+	EtsyDescription        string             `bson:"e_description,omitempty"`
+	EtsyProductTitle       string             `bson:"e_product_title,omitempty"`
+	EtsyShopID             int                `bson:"e_shop_id,omitempty"`
+	EtsyQuantity           int                `bson:"e_curr_stock"`
+	EtsyPriorQuantity      int                `bson:"e_prev_stock"`
+	EtsyItemInitialised    bool               `bson:"e_item_initialised"`
+	OverrideStockRequested bool               `bson:"override_stock_requested"`
+	OverrideStockLevel     int                `bson:"override_stock_level"`
 }
 
 type StockReconciliationDelta struct {
@@ -40,6 +43,14 @@ type StockReconciliationDelta struct {
 	ShopifyDelta      map[string]int `json:"shopify_delta"`
 	EstyHasChanges    bool           `json:"etsyhaschanges"`
 	ShopifyHasChanges bool           `json:"shopifyhaschanges"`
+}
+
+func createKeyValuePairs(m primitive.M) string {
+	b := new(bytes.Buffer)
+	for key, value := range m {
+		fmt.Fprintf(b, "%s=\"%v\"\n", key, value)
+	}
+	return b.String()
 }
 
 func getdatabases(client *mongo.Client) ([]string, error) {
@@ -100,12 +111,80 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 	return token, nil
 
 }
+func getOverrides(storename string, client *mongo.Client) (map[string]int, error) {
+
+	overrides := make(map[string]int)
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
+	filter := bson.D{{"shopify_domain", storename}, {"override_stock_requested", true}}
+
+	cursor, err := stockCollection.Find(ctx, filter)
+	if err != nil {
+		log.Errorf("Error getting items with stock-overrider-requested %v", err)
+		return overrides, err
+	}
+	for cursor.Next(ctx) {
+		var elem StockItem
+		err := cursor.Decode(&elem)
+		if err != nil {
+			log.Fatal(err)
+		}
+		overrides[elem.SKU] = elem.OverrideStockLevel
+	}
+
+	if err := cursor.Err(); err != nil {
+		log.Fatal(err)
+	}
+	cursor.Close(ctx)
+	return overrides, nil
+}
+
+func getItemsToLink(storename string, client *mongo.Client) (map[int]string, error) {
+	linkitems := make(map[int]string)
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
+	filter := bson.D{{"shopify_domain", storename}, {"e_sku_sync_requested", true}}
+
+	cursor, err := stockCollection.Find(ctx, filter)
+	if err != nil {
+		log.Errorf("Error getting items with sku-set-requested %v ", err)
+		return linkitems, err
+	}
+	for cursor.Next(ctx) {
+		var elem StockItem
+		err := cursor.Decode(&elem)
+		if err != nil {
+			log.Fatal(err)
+		}
+		linkitems[elem.EtsyProductID] = elem.SKU
+	}
+
+	if err := cursor.Err(); err != nil {
+		log.Fatal(err)
+	}
+	cursor.Close(ctx)
+	return linkitems, nil
+}
 
 func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error) {
 	var item StockItem
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
+
+	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
+		log.Infof("Error writing Etsy shop details %v", err)
+		return StockItem{}, err
+	}
+	return item, nil
+
+}
+
+func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (StockItem, error) {
+	var item StockItem
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	stockCollection := client.Database("etsync").Collection("stock")
+	filter := bson.D{{"shopify_domain", storename}, {"sku", Sku}}
 
 	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
 		log.Infof("Error writing Etsy shop details %v", err)
@@ -167,9 +246,14 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 // This should be returned as a struct with two independent sets of actions:
 // 1. a map of productid -> delta which gets applied to the Etsy API
 // 2. a map of shopify variant Ids -> delta which gets applied to Shopify API
-func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Client) (StockReconciliationDelta, error) {
+func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[int]string, overrideStock map[string]int, client *mongo.Client) (StockReconciliationDelta, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	var stockdelta StockReconciliationDelta
+	if len(overrideStock) > 0 {
+		log.Debug("Stock override set so setting both Etsy & Shopify hasDelta flags")
+		stockdelta.EstyHasChanges = true
+		stockdelta.ShopifyHasChanges = true
+	}
 	etsyDelta := make(map[int64]int)
 	shopifyDelta := make(map[string]int)
 	var existingRecord StockItem
@@ -180,42 +264,79 @@ func saveEtsyProducts(storename string, products []etsyProduct, client *mongo.Cl
 			vstring := fmt.Sprintf("%s: %s", pv.PropertyName, strings.Join(pv.Values, "-"))
 			vdesc = append(vdesc, vstring)
 		}
+		var stockset int
+		var skutoset string
+		var override bool
+		var setsku bool
+		if stockset, ok := overrideStock[p.Sku]; ok {
+			// If we are setting the stock then there must be an existing db record
+			// we need to set the current & previous value to the override value (in stockset)
+			override = true
+			log.Debugf("Set the stock level for %d to %d", p.ProductID, stockset)
+		} else {
+			stockset = p.Offerings[0].Quantity
+		}
+
+		if s, ok := eSkusToSet[int(p.ProductID)]; ok {
+			// we need to override setting the sku in the DB for this product
+			skutoset = s
+			setsku = true
+			log.Debug(fmt.Sprintf("Overriding the sku for %d to: %s", p.ProductID, skutoset))
+		} else {
+			skutoset = p.Sku
+			log.Debug(fmt.Sprintf("Sku for %d should be %s", p.ProductID, skutoset))
+		}
+		log.Debugf("Preparing update for %d with sku %s", p.ProductID, skutoset)
 		updateRecord := bson.M{
 			"shop_id":                 p.ShopID,
 			"e_product_title":         p.Title,
 			"e_description":           p.Description,
-			"sku":                     p.Sku,
+			"sku":                     skutoset,
 			"shopify_domain":          p.ShopifyDomain,
-			"e_curr_stock":            p.Offerings[0].Quantity,
+			"e_curr_stock":            stockset,
 			"e_product_id":            p.ProductID,
 			"e_variation_description": strings.Join(vdesc, ", "),
 		}
 		log.WithFields(log.Fields{
 			"Product_ID": p.ProductID,
 			"Title":      p.Title,
-			"Sku":        p.Sku,
+			"Sku":        skutoset,
 		}).Info("Updating DB with Etsy product")
-		filter := bson.M{"sku": p.Sku, "shopify_domain": p.ShopifyDomain}
+		filter := bson.M{"sku": skutoset, "shopify_domain": p.ShopifyDomain}
 		if err := stockCollection.FindOne(ctx, filter).Decode(&existingRecord); err != nil {
 			log.WithFields(log.Fields{
 				"etsy-ProductID": p.ProductID,
 				"Response":       err,
-			}).Infof("Record not found for shopify item with this sku, initialising with current stock level %d", p.Offerings[0].Quantity)
-			updateRecord["e_prev_stock"] = p.Offerings[0].Quantity
+			}).Infof("Record not found for shopify item with this sku, initialising with current stock level %d", stockset)
+			updateRecord["e_prev_stock"] = stockset
 			updateRecord["e_item_exists"] = true
 		} else {
-			updateRecord["e_prev_stock"] = existingRecord.EtsyQuantity
+			if override {
+				// we need to override previous stock in the DB for this product
+				updateRecord["e_prev_stock"] = stockset
+				updateRecord["override_stock_requested"] = false
+			} else {
+				updateRecord["e_prev_stock"] = existingRecord.EtsyQuantity
+			}
+			if setsku {
+				updateRecord["e_sku_sync_requested"] = false
+			}
 			if !existingRecord.EtsyItemInitialised {
-				updateRecord["e_prev_stock"] = p.Offerings[0].Quantity
+				updateRecord["e_prev_stock"] = stockset
 				updateRecord["e_item_initialised"] = true
 			}
 			log.Infof("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
-			if existingRecord.Available != existingRecord.PriorAvailable {
+			log.Debug(createKeyValuePairs(updateRecord))
+			if (existingRecord.Available != existingRecord.PriorAvailable) || !override {
+				// we don't need to make changes to shopify if the stock is being overridden (those changes will be
+				// handled seperately)
 				stockdelta.EstyHasChanges = true
 				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
 			}
 
-			if updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"] {
+			if (updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"]) || !override {
+				// we don't need to make changes to shopify if the stock is being overridden (those changes will be
+				// handled seperately)
 				stockdelta.ShopifyHasChanges = true
 				shopifyDelta[existingRecord.VariantID] = (p.Offerings[0].Quantity - existingRecord.EtsyQuantity)
 			}
