@@ -45,13 +45,12 @@ type StockReconciliationDelta struct {
 	ShopifyHasChanges bool           `json:"shopifyhaschanges"`
 }
 
-
 func createKeyValuePairs(m primitive.M) string {
-    b := new(bytes.Buffer)
-    for key, value := range m {
-        fmt.Fprintf(b, "%s=\"%v\"\n", key, value)
-    }
-    return b.String()
+	b := new(bytes.Buffer)
+	for key, value := range m {
+		fmt.Fprintf(b, "%s=\"%v\"\n", key, value)
+	}
+	return b.String()
 }
 
 func getdatabases(client *mongo.Client) ([]string, error) {
@@ -195,8 +194,6 @@ func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (Stoc
 
 }
 
-
-
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
 	log.Info("Writing the etsy token to DB")
 	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
@@ -253,6 +250,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	var stockdelta StockReconciliationDelta
 	if len(overrideStock) > 0 {
+		log.Debug("Stock override set so setting both Etsy & Shopify hasDelta flags")
 		stockdelta.EstyHasChanges = true
 		stockdelta.ShopifyHasChanges = true
 	}
@@ -274,7 +272,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			// If we are setting the stock then there must be an existing db record
 			// we need to set the current & previous value to the override value (in stockset)
 			override = true
-			log.Debugf("Set the stock level for %s to %d", p.ProductID, stockset)
+			log.Debugf("Set the stock level for %d to %d", p.ProductID, stockset)
 		} else {
 			stockset = p.Offerings[0].Quantity
 		}
@@ -288,7 +286,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			skutoset = p.Sku
 			log.Debug(fmt.Sprintf("Sku for %d should be %s", p.ProductID, skutoset))
 		}
-		log.Debugf("Preparing update for %d with sku %s",p.ProductID, skutoset)
+		log.Debugf("Preparing update for %d with sku %s", p.ProductID, skutoset)
 		updateRecord := bson.M{
 			"shop_id":                 p.ShopID,
 			"e_product_title":         p.Title,
