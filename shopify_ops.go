@@ -347,6 +347,7 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 			overridesprocessed[item.SKU] = true
 		} else {
 			newstock = item.Available + v
+			if newstock < 0 { newstock = 0}
 		}
 		log.Debugf("Updating shopify for item sku %s new stock %d", item.SKU, newstock)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, newstock))

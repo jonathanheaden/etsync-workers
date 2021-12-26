@@ -411,6 +411,7 @@ func reconcileEtsyStockLevel(storename, clientid, token string, ListingID int, e
 		if stockdelta, ok := delta.EtsyDelta[p.ProductID]; ok {
 			log.Infof("Product has stock level change required %d", stockdelta)
 			epuo.Quantity = p.Offerings[0].Quantity + stockdelta
+			if epuo.Quantity < 0 { epuo.Quantity = 0 }
 		} else if stockset, ok := overrideStock[p.Sku]; ok {
 			log.Infof("Product has stock level change required (set via app) %d", stockset)
 			epuo.Quantity = stockset
