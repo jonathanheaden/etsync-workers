@@ -328,10 +328,12 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 }
 
 func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, overrideStock map[string]int, client *mongo.Client) error {
+	log.Debugf("Setting Shopify stock:delta [%v] overrides [%v]",delta.ShopifyDelta, overrideStock)
 	url := "https://etsync.myshopify.com/admin/api/2020-10/inventory_levels/set.json"
 	method := "POST"
-
+	overridesprocessed := make(map[string]bool)
 	for k, v := range delta.ShopifyDelta {
+
 		var newstock int
 		log.Infof("Update stock for %s by %d", k, v)
 		item, err := getShopifyStockItem(storename, k, client)
@@ -342,10 +344,11 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
 		if stockset, ok := overrideStock[item.SKU]; ok {
 			newstock = stockset
+			overridesprocessed[item.SKU] = true
 		} else {
 			newstock = item.Available + v
 		}
-		log.Debugf("Updating shopify for item sku %s new stock %d",item.SKU, newstock)
+		log.Debugf("Updating shopify for item sku %s new stock %d", item.SKU, newstock)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, newstock))
 
 		httpclient := &http.Client{}
@@ -373,16 +376,20 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 
 	}
 	// need to handle cases where the override is set but that sku is not in the regular stock delta
-	// this could result in double handing but shouldn't be excessive. may need rework as tech debt
 	for k, v := range overrideStock {
+		if overridesprocessed[k] {
+			log.Infof("Skipping set shopify stock for %s as already processed", k)
+			continue
+		}
+		log.Infof("Force set shopify stock for %s as requested via app", k)
 		item, err := getShopifyStockItemBySku(storename, k, client)
 		if err != nil {
 			log.Errorf("Error getting record for %s from DB %v", k, err)
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
-		
-		log.Debugf("Updating shopify for item sku %s new stock %d",item.SKU, v)
+
+		log.Debugf("Updating shopify for item sku %s new stock %d", k, v)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, v))
 
 		httpclient := &http.Client{}
@@ -407,6 +414,7 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 			log.Error(err)
 
 		}
+
 	}
 	return nil
 }
