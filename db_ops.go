@@ -377,7 +377,12 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			"Title":      p.Title,
 			"Sku":        skutoset,
 		}).Debug("Updating DB with Etsy product")
-		filter := bson.M{"sku": skutoset, "shopify_domain": p.ShopifyDomain}
+		var filter bson.M
+		if skutoset != "" {
+			filter = bson.M{"sku": skutoset, "shopify_domain": p.ShopifyDomain}
+		} else {
+			filter = bson.M{"e_product_id": p.ProductID, "shopify_domain": p.ShopifyDomain}
+		}
 		if err := stockCollection.FindOne(ctx, filter).Decode(&existingRecord); err != nil {
 			log.WithFields(log.Fields{
 				"File":           "db_ops",
