@@ -422,7 +422,7 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 			log.WithFields(log.Fields{
 				"File":   "shopify_ops",
 				"Caller": "ReconcileShopifyStockLevel",
-			}).Errorf("Error getting record for %s from DB %v", k, err)
+			}).Warnf("Error getting record for %s from DB %v", k, err)
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
@@ -491,7 +491,7 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 		}).Debugf("Force set shopify stock for %s as requested via app", k)
 		item, err := getShopifyStockItemBySku(storename, k, client)
 		if err != nil {
-			log.Errorf("Error getting record for %s from DB %v", k, err)
+			log.Warnf("Error getting record for %s from DB %v", k, err)
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
