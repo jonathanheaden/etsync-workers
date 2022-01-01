@@ -58,7 +58,10 @@ func getdatabases(client *mongo.Client) ([]string, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	dblist, err := client.ListDatabaseNames(ctx, bson.M{})
 	if err != nil {
-		log.Warn(err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetDatabases",
+		}).Warn(err)
 		return dblist, err
 	}
 	return dblist, nil
@@ -70,10 +73,16 @@ func getstoretoken(storename string, client *mongo.Client) string {
 	collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", storename}}
 	if err := collection.FindOne(ctx, filter).Decode(&doc); err != nil {
-		log.Warn(err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetStoreToken",
+		}).Warn(err)
 		return ""
 	}
-	log.Info("Got shop record from database for shopify token")
+	log.WithFields(log.Fields{
+		"File":   "db_ops",
+		"Caller": "GetStoreToken",
+	}).Info("Got shop record from database for shopify token")
 	return fmt.Sprintf("%v", doc["accessToken"])
 }
 
@@ -81,29 +90,44 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	var token etsytoken
 	collection := client.Database("etsync").Collection("shops")
-	filter := bson.D{{"shopify_domain", config.SHOP_NAME}}
+	filter := bson.D{{"shopify_domain", *shopname}}
 	if err := collection.FindOne(ctx, filter).Decode(&token); err != nil {
-		log.Warn(err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetEtsyToken",
+		}).Warn(err)
 		return etsytoken{}, err
 	}
-	log.Info("Got shop record from database for etsy token")
+	log.WithFields(log.Fields{
+		"File":   "db_ops",
+		"Caller": "GetEtsyToken",
+	}).Info("Got shop record from database for etsy token")
 
 	if token.EtsyOnBoarded && (time.Now().Add(10 * time.Minute).Before(token.EtsyTokenExpires)) {
 		// etsy has been onboarded & the etsy accesscode has not expired
 		log.Info("Etsy token has greater than 10 minutes ttl, reusing current token")
 		return token, nil
 	} else {
-		log.Info("New Etsy token required, sending request to etsy API")
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetEtsyToken",
+		}).Info("New Etsy token required, sending request to etsy API")
 		rtoken, err := getEtsyTokenFromAPI(config.ETSY_CLIENT_ID, config.ETSY_REDIRECT_URI, token)
 		if err != nil {
 			return etsytoken{}, err
 		}
 		rtoken.EtsyOnBoarded = true
-		rtoken.ShopifyDomain = config.SHOP_NAME // if this is a new token from etsy API then it won't have the shop
-		log.Infof("Token retrieved from etsy api for %s with expiration %v", rtoken.ShopifyDomain, rtoken.EtsyTokenExpires)
+		rtoken.ShopifyDomain = *shopname // if this is a new token from etsy API then it won't have the shop
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetEtsyToken",
+		}).Infof("Token retrieved from etsy api for %s with expiration %v", rtoken.ShopifyDomain, rtoken.EtsyTokenExpires)
 
-		if err := writeEtsyToken(config.SHOP_NAME, rtoken, client); err != nil {
-			log.Errorf("Unable to store the etsy token in database! %v", err)
+		if err := writeEtsyToken(*shopname, rtoken, client); err != nil {
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "GetEtsyToken",
+			}).Errorf("Unable to store the etsy token in database! %v", err)
 			return etsytoken{}, err
 		}
 		token = rtoken
@@ -120,20 +144,29 @@ func getOverrides(storename string, client *mongo.Client) (map[string]int, error
 
 	cursor, err := stockCollection.Find(ctx, filter)
 	if err != nil {
-		log.Errorf("Error getting items with stock-overrider-requested %v", err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetOverrides",
+		}).Errorf("Error getting items with stock-overrider-requested %v", err)
 		return overrides, err
 	}
 	for cursor.Next(ctx) {
 		var elem StockItem
 		err := cursor.Decode(&elem)
 		if err != nil {
-			log.Fatal(err)
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "GetOverrides",
+			}).Fatal(err)
 		}
 		overrides[elem.SKU] = elem.OverrideStockLevel
 	}
 
 	if err := cursor.Err(); err != nil {
-		log.Fatal(err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetOverrides",
+		}).Fatal(err)
 	}
 	cursor.Close(ctx)
 	return overrides, nil
@@ -147,20 +180,29 @@ func getItemsToLink(storename string, client *mongo.Client) (map[int]string, err
 
 	cursor, err := stockCollection.Find(ctx, filter)
 	if err != nil {
-		log.Errorf("Error getting items with sku-set-requested %v ", err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetItemsToLink",
+		}).Errorf("Error getting items with sku-set-requested %v ", err)
 		return linkitems, err
 	}
 	for cursor.Next(ctx) {
 		var elem StockItem
 		err := cursor.Decode(&elem)
 		if err != nil {
-			log.Fatal(err)
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "GetItemsToLink",
+			}).Fatal(err)
 		}
 		linkitems[elem.EtsyProductID] = elem.SKU
 	}
 
 	if err := cursor.Err(); err != nil {
-		log.Fatal(err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetItemsToLink",
+		}).Fatal(err)
 	}
 	cursor.Close(ctx)
 	return linkitems, nil
@@ -173,7 +215,10 @@ func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (Sto
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
 
 	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
-		log.Infof("Error writing Etsy shop details %v", err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetShopifyStockItem",
+		}).Infof("Error writing Etsy shop details %v", err)
 		return StockItem{}, err
 	}
 	return item, nil
@@ -187,7 +232,10 @@ func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (Stoc
 	filter := bson.D{{"shopify_domain", storename}, {"sku", Sku}}
 
 	if err := stockCollection.FindOne(ctx, filter).Decode(&item); err != nil {
-		log.Infof("Error writing Etsy shop details %v", err)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "GetShopifyStockItemBySku",
+		}).Infof("Error writing Etsy shop details %v", err)
 		return StockItem{}, err
 	}
 	return item, nil
@@ -195,7 +243,10 @@ func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (Stoc
 }
 
 func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) error {
-	log.Info("Writing the etsy token to DB")
+	log.WithFields(log.Fields{
+		"File":   "db_ops",
+		"Caller": "WriteEtsyToken",
+	}).Debug("Writing the etsy token to DB")
 	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 	shop_collection := client.Database("etsync").Collection("shops")
 	filter := bson.D{{"shopify_domain", storename}}
@@ -211,10 +262,16 @@ func writeEtsyToken(storename string, token etsytoken, client *mongo.Client) err
 	opts := options.FindOneAndUpdate().SetUpsert(true)
 	result := shop_collection.FindOneAndUpdate(ctx, filter, update, opts)
 	if result.Err() != nil {
-		log.Infof("No prior record found when inserting doc %s", result.Err())
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "WriteEtsyToken",
+		}).Debugf("No prior record found when inserting doc %s", result.Err())
 		return result.Err()
 	}
-	log.Info("Success writing etsy token to Database")
+	log.WithFields(log.Fields{
+		"File":   "db_ops",
+		"Caller": "WriteEtsyToken",
+	}).Debug("Success writing etsy token to Database")
 	return nil
 }
 
@@ -232,7 +289,10 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 	opts := options.FindOneAndUpdate().SetUpsert(true)
 	result := shop_collection.FindOneAndUpdate(ctx, filter, update, opts)
 	if result.Err() != nil {
-		log.Infof("Error writing Etsy shop details %s", result.Err())
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "SaveEtsyShop",
+		}).Debugf("Error writing Etsy shop details %s", result.Err())
 		return result.Err()
 	}
 	log.Info("Success writing etsy shop details to Database")
@@ -250,7 +310,10 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	var stockdelta StockReconciliationDelta
 	if len(overrideStock) > 0 {
-		log.Debug("Stock override set so setting both Etsy & Shopify hasDelta flags")
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "SaveEtsyProducts",
+		}).Debug("Stock override set so setting both Etsy & Shopify hasDelta flags")
 		stockdelta.EstyHasChanges = true
 		stockdelta.ShopifyHasChanges = true
 	}
@@ -272,7 +335,10 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			// If we are setting the stock then there must be an existing db record
 			// we need to set the current & previous value to the override value (in stockset)
 			override = true
-			log.Debugf("Set the stock level for %d to %d", p.ProductID, stockset)
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SaveEtsyProducts",
+			}).Debugf("Set the stock level for %d to %d", p.ProductID, stockset)
 		} else {
 			stockset = p.Offerings[0].Quantity
 		}
@@ -281,12 +347,18 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			// we need to override setting the sku in the DB for this product
 			skutoset = s
 			setsku = true
-			log.Debug(fmt.Sprintf("Overriding the sku for %d to: %s", p.ProductID, skutoset))
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SaveEtsyProducts",
+			}).Debugf("Overriding the sku for %d to: %s", p.ProductID, skutoset)
 		} else {
 			skutoset = p.Sku
 			log.Debug(fmt.Sprintf("Sku for %d should be %s", p.ProductID, skutoset))
 		}
-		log.Debugf("Preparing update for %d with sku %s", p.ProductID, skutoset)
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "SaveEtsyProducts",
+		}).Debugf("Preparing update for %d with sku %s", p.ProductID, skutoset)
 		updateRecord := bson.M{
 			"shop_id":                 p.ShopID,
 			"e_product_title":         p.Title,
@@ -298,16 +370,20 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			"e_variation_description": strings.Join(vdesc, ", "),
 		}
 		log.WithFields(log.Fields{
+			"File":       "db_ops",
+			"Caller":     "SaveEtsyProducts",
 			"Product_ID": p.ProductID,
 			"Title":      p.Title,
 			"Sku":        skutoset,
-		}).Info("Updating DB with Etsy product")
+		}).Debug("Updating DB with Etsy product")
 		filter := bson.M{"sku": skutoset, "shopify_domain": p.ShopifyDomain}
 		if err := stockCollection.FindOne(ctx, filter).Decode(&existingRecord); err != nil {
 			log.WithFields(log.Fields{
+				"File":           "db_ops",
+				"Caller":         "SaveEtsyProducts",
 				"etsy-ProductID": p.ProductID,
 				"Response":       err,
-			}).Infof("Record not found for shopify item with this sku, initialising with current stock level %d", stockset)
+			}).Debugf("Record not found for shopify item with this sku, initialising with current stock level %d", stockset)
 			updateRecord["e_prev_stock"] = stockset
 			updateRecord["e_item_exists"] = true
 		} else {
@@ -325,8 +401,14 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 				updateRecord["e_prev_stock"] = stockset
 				updateRecord["e_item_initialised"] = true
 			}
-			log.Infof("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
-			log.Debug(createKeyValuePairs(updateRecord))
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SaveEtsyProducts",
+			}).Debugf("Loading existing record for %d: stock levels (prev->new) %d -> %d", p.ProductID, updateRecord["e_prev_stock"], p.Offerings[0].Quantity)
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SaveEtsyProducts",
+			}).Debug(createKeyValuePairs(updateRecord))
 			if (existingRecord.Available != existingRecord.PriorAvailable) || !override {
 				// we don't need to make changes to shopify if the stock is being overridden (those changes will be
 				// handled seperately)
@@ -355,7 +437,10 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 	stockdelta.EtsyDelta = etsyDelta
 	stockdelta.ShopifyDelta = shopifyDelta
 
-	log.Infof("Success writing %d etsy listing details to Database", len(products))
+	log.WithFields(log.Fields{
+		"File":   "db_ops",
+		"Caller": "SaveEtsyProducts",
+	}).Infof("Success writing %d etsy listing details to Database", len(products))
 	return stockdelta, nil
 }
 
@@ -374,7 +459,10 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 
 		result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
 		if result.Err() != nil {
-			log.Infof("No prior record found when inserting doc %s", result.Err())
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SetEtsyStockLevelForProducts",
+			}).Debugf("No prior record found when inserting doc %s", result.Err())
 			return result.Err()
 		}
 	}
@@ -396,7 +484,10 @@ func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int,
 
 	result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
 	if result.Err() != nil {
-		log.Infof("No prior record found when inserting doc %s", result.Err())
+		log.WithFields(log.Fields{
+			"File":   "db_ops",
+			"Caller": "SetEtsyStockLevelForProducts",
+		}).Debugf("No prior record found when inserting doc %s", result.Err())
 		return result.Err()
 	}
 	return nil
@@ -415,14 +506,19 @@ func setshopstock(storename string, items []StockItem, client *mongo.Client) err
 		if itemtype == "inventory" {
 			if err := stockCollection.FindOne(ctx, filter).Decode(&existingRecord); err != nil {
 				log.WithFields(log.Fields{
+					"File":     "db_ops",
+					"Caller":   "SetShopStock",
 					"ID":       item.InventoryID,
 					"Response": err,
-				}).Infof("Record not found, initialising with current stock level %d", item.Available)
+				}).Debugf("Record not found, initialising with current stock level %d", item.Available)
 				item.PriorAvailable = item.Available
 				item.EtsyItemInitialised = false
 			} else {
 				item.PriorAvailable = existingRecord.Available
-				log.Infof("Loading existing record for %s: stock levels (prev->new) %d -> %d", item.InventoryID, item.PriorAvailable, item.Available)
+				log.WithFields(log.Fields{
+					"File":   "db_ops",
+					"Caller": "SetShopStock",
+				}).Debugf("Loading existing record for %s: stock levels (prev->new) %d -> %d", item.InventoryID, item.PriorAvailable, item.Available)
 			}
 			update = bson.M{
 				"$set": bson.M{
@@ -447,23 +543,33 @@ func setshopstock(storename string, items []StockItem, client *mongo.Client) err
 			}
 		}
 		log.WithFields(log.Fields{
-			"ID": item.InventoryID,
-		}).Info("Updating Database")
+			"File":   "db_ops",
+			"Caller": "SetShopStock",
+			"ID":     item.InventoryID,
+		}).Debug("Updating Database")
 
 		opts := options.FindOneAndUpdate().SetUpsert(true)
 
 		result := stockCollection.FindOneAndUpdate(ctx, filter, update, opts)
 		if result.Err() != nil {
-			log.Infof("No prior record found when inserting doc %s", result.Err())
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SetShopStock",
+			}).Debugf("No prior record found when inserting doc %s", result.Err())
 			continue
 		}
 		doc := bson.M{}
 		if err := result.Decode(&doc); err != nil {
-			log.Errorf("Problem decoding record for %s", item.InventoryID)
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SetShopStock",
+			}).Errorf("Problem decoding record for %s", item.InventoryID)
 		}
 		log.WithFields(log.Fields{
-			"Kind": itemtype,
-		}).Info(fmt.Sprintf("Upserted Doc %s", item.InventoryID))
+			"File":   "db_ops",
+			"Caller": "SetShopStock",
+			"Kind":   itemtype,
+		}).Debugf("Upserted Doc %s", item.InventoryID)
 	}
 
 	return nil

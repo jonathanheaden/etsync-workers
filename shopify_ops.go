@@ -88,14 +88,20 @@ type Product struct {
 func registerbulkquery(storeurl, token, query string) (string, error) {
 	var response BulkRequest
 	url := fmt.Sprintf("https://%s/admin/api/2021-01/graphql.json", storeurl)
-	log.Info(fmt.Sprintf("sending request to %s", url))
+	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "RegisterBulkQuery",
+	}).Debugf("sending request to %s", url)
 	method := "POST"
 	payload := strings.NewReader(query)
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, payload)
 
 	if err != nil {
-		log.Errorf("Error with http client: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "RegisterBulkQuery",
+		}).Errorf("Error with http client: %v", err)
 		return "", err
 	}
 	req.Header.Add("X-Shopify-Access-Token", token)
@@ -103,33 +109,52 @@ func registerbulkquery(storeurl, token, query string) (string, error) {
 
 	res, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Error with http client request action: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "RegisterBulkQuery",
+			"Action": "make http request",
+		}).Errorf("Error with http client request action: %v", err)
 		return "", err
 	}
-	log.Info(fmt.Sprintf("response code %d", res.StatusCode))
+	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "RegisterBulkQuery",
+	}).Infof("Request to graphql - response code %d", res.StatusCode)
 
 	defer res.Body.Close()
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Errorf("Error reading response body: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "RegisterBulkQuery",
+		}).Errorf("Error reading response body: %v", err)
 		return "", err
 	}
 
 	if err := json.Unmarshal(body, &response); err != nil {
-		log.Errorf("Error with response unmarshall: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "RegisterBulkQuery",
+			"Action": "unmarshall",
+		}).Errorf("Error with response unmarshall: %v", err)
 		return "", err
 	}
 
 	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "RegisterBulkQuery",
 		"Status": response.Data.BulkOperationRunQuery.BulkOperation.Status,
 		"ID":     response.Data.BulkOperationRunQuery.BulkOperation.ID,
-	}).Info("Response from Shopify Register Bulk Query operation")
+	}).Debug("Response from Shopify Register Bulk Query operation")
 
 	if response.Data.BulkOperationRunQuery.BulkOperation.Status == "CREATED" {
 		return response.Data.BulkOperationRunQuery.BulkOperation.ID, nil
 	} else {
 		errstring := strings.Join(response.Data.BulkOperationRunQuery.UserErrors, "\n")
-		log.Warnf("Errors contained in response: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "RegisterBulkQuery",
+		}).Warnf("Errors contained in response: %v", err)
 		return "", fmt.Errorf("%s", errstring)
 	}
 }
@@ -144,7 +169,10 @@ func getBulkRequestStatus(storeurl, token string) (string, string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, payload)
 	if err != nil {
-		log.Errorf("Error with http client: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "GetBulkRequestStatus",
+		}).Errorf("Error with http client: %v", err)
 		return "", "", err
 	}
 	req.Header.Add("X-Shopify-Access-Token", token)
@@ -159,7 +187,11 @@ func getBulkRequestStatus(storeurl, token string) (string, string, error) {
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Errorf("Error reading response body: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "GetBulkRequestStatus",
+			"Action": "Read response",
+		}).Errorf("Error reading response body: %v", err)
 		return "", "", err
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -183,13 +215,18 @@ func getproductvariants(storeurl, token string) (string, error) {
 			return "", err
 		}
 		log.WithFields(log.Fields{
+			"File":    "shopify_ops",
+			"Caller":  "GetProductVariants",
 			"Status":  statusurl,
 			"retries": attempt,
-		}).Info()
+		}).Debug("Awaiting graphql response")
 		// if the statusurl is returned then we should break out before the timed sleep
 		attempt = attempt + 1
 		if attempt > 12 {
-			log.Error("Exiting function as 4 minutes have expired")
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "GetProductVariants",
+			}).Error("Exiting function as 4 minutes have expired")
 			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
 		if statusurl != "COMPLETED" {
@@ -214,13 +251,18 @@ func getinventorylevels(storeurl, token string) (string, error) {
 			return "", err
 		}
 		log.WithFields(log.Fields{
+			"File":    "shopify_ops",
+			"Caller":  "GetInventoryLevels",
 			"Status":  statusurl,
 			"retries": attempt,
-		}).Info()
+		}).Debug("Awaiting graphql response")
 		// if the statusurl is returned then we should break out before the timed sleep
 		attempt = attempt + 1
 		if attempt > 12 {
-			log.Error("Exiting function as 4 minutes have expired")
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "GetInventoryLevels",
+			}).Error("Exiting function as 4 minutes have expired")
 			return "", fmt.Errorf("Query exceeded 4 minute timeout")
 		}
 		if statusurl != "COMPLETED" {
@@ -232,13 +274,16 @@ func getinventorylevels(storeurl, token string) (string, error) {
 
 func processinventorylevels(url, storename string, client *mongo.Client) error {
 
-	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
+	log.Debugf("Started processing inventory list for %s", storename)
 	var Items []StockItem
 
 	response, err := http.Get(url)
 
 	if err != nil {
-		log.Errorf("Error reading products: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error reading products: %v", err)
 		return err
 	}
 
@@ -251,16 +296,22 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 		var avail int
 
 		if err := json.Unmarshal(scanner.Bytes(), &inventorylevel); err != nil {
-			log.Warn("Problem scanning line")
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ProcessInventoryLevels",
+				"Err":    err,
+			}).Warn("Problem scanning line")
 			continue
 		}
 		if inventorylevel.Location.ID != "" {
 			avail = inventorylevel.Available
 			log.WithFields(log.Fields{
+				"File":        "shopify_ops",
+				"Caller":      "ProcessInventoryLevels",
 				"ID":          inventorylevel.InventoryID,
 				"Location":    inventorylevel.Location.ID,
 				"Stock level": avail,
-			}).Info(fmt.Sprintf("Processing inventory item"))
+			}).Debug("Processing inventory item")
 			item := StockItem{
 				ItemType:    "inventory",
 				InventoryID: inventorylevel.InventoryID,
@@ -271,24 +322,39 @@ func processinventorylevels(url, storename string, client *mongo.Client) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Errorf("Error reading input:", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error reading input:", err)
 	}
 	if err := setshopstock(storename, Items, client); err != nil {
-		log.Errorf("Error with DB upsert %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error with DB upsert %v", err)
 		return err
 	}
-	log.Info(fmt.Sprintf("Writing %d inventory levels to DB", len(Items)))
+	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "ProcessInventoryLevels",
+	}).Debugf("Writing %d inventory levels to DB", len(Items))
 	return nil
 }
 
 func processproductlevels(url, storename string, client *mongo.Client) error {
-	log.Info(fmt.Sprintf("Started processing inventory list for %s", storename))
+	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "ProcessProductLevels",
+	}).Infof("Started processing inventory list for %s", storename)
 	var Items []StockItem
 
 	response, err := http.Get(url)
 
 	if err != nil {
-		log.Errorf("Error reading products: %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error reading products: %v", err)
 		return err
 	}
 
@@ -300,7 +366,10 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 		var productvariant ProductVariant
 		count++
 		if err := json.Unmarshal(scanner.Bytes(), &productvariant); err != nil {
-			log.Warn("Problem scanning line")
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ProcessInventoryLevels",
+			}).Warn("Problem scanning line")
 			continue
 		}
 		if productvariant.InventoryManagement == "SHOPIFY" {
@@ -317,28 +386,43 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Errorf("Error reading input:", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error reading input:", err)
 	}
 	if err := setshopstock(storename, Items, client); err != nil {
-		log.Errorf("Error with DB upsert %v", err)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ProcessInventoryLevels",
+		}).Errorf("Error with DB upsert %v", err)
 		return err
 	}
-	log.Info(fmt.Sprintf("Writing %d products to DB", len(Items)))
+	log.WithFields(log.Fields{
+		"File":   "shopify_ops",
+		"Caller": "ProcessInventoryLevels",
+	}).Debugf("Writing %d products to DB", len(Items))
 	return nil
 }
 
 func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, overrideStock map[string]int, client *mongo.Client) error {
-	log.Debugf("Setting Shopify stock:delta [%v] overrides [%v]",delta.ShopifyDelta, overrideStock)
+	log.Debugf("Setting Shopify stock:delta [%v] overrides [%v]", delta.ShopifyDelta, overrideStock)
 	url := fmt.Sprintf("https://%s/admin/api/2020-10/inventory_levels/set.json", storename)
 	method := "POST"
 	overridesprocessed := make(map[string]bool)
 	for k, v := range delta.ShopifyDelta {
 
 		var newstock int
-		log.Infof("Update stock for %s by %d", k, v)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ReconcileShopifyStockLevel",
+		}).Debugf("Update stock for %s by %d", k, v)
 		item, err := getShopifyStockItem(storename, k, client)
 		if err != nil {
-			log.Errorf("Error getting record for %s from DB %v", k, err)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+			}).Errorf("Error getting record for %s from DB %v", k, err)
 		}
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
@@ -347,9 +431,14 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 			overridesprocessed[item.SKU] = true
 		} else {
 			newstock = item.Available + v
-			if newstock < 0 { newstock = 0}
+			if newstock < 0 {
+				newstock = 0
+			}
 		}
-		log.Debugf("Updating shopify for item sku %s new stock %d", item.SKU, newstock)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ReconcileShopifyStockLevel",
+		}).Debugf("Updating shopify for item sku %s new stock %d", item.SKU, newstock)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, newstock))
 
 		httpclient := &http.Client{}
@@ -364,25 +453,42 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 
 		res, err := httpclient.Do(req)
 		if err != nil {
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+				"Action": "http request",
+			}).Error(err)
 			continue
 		}
 		if res.StatusCode != 200 {
-			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+				"Action": "http response",
+			}).Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
 		}
 		if err = setShopifyStockLevelForVariant(storename, k, newstock, client); err != nil {
-			log.Error(err)
-
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+				"Action": "setShopifyStockLevelForVariant",
+			}).Error(err)
 		}
 
 	}
 	// need to handle cases where the override is set but that sku is not in the regular stock delta
 	for k, v := range overrideStock {
 		if overridesprocessed[k] {
-			log.Infof("Skipping set shopify stock for %s as already processed", k)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+			}).Debugf("Skipping set shopify stock for %s as already processed", k)
 			continue
 		}
-		log.Infof("Force set shopify stock for %s as requested via app", k)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ReconcileShopifyStockLevel",
+		}).Debugf("Force set shopify stock for %s as requested via app", k)
 		item, err := getShopifyStockItemBySku(storename, k, client)
 		if err != nil {
 			log.Errorf("Error getting record for %s from DB %v", k, err)
@@ -390,7 +496,10 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 		loc := item.LocationID[strings.LastIndex(item.LocationID, "/")+1:]
 		i := item.InventoryID[strings.LastIndex(item.InventoryID, "/")+1:]
 
-		log.Debugf("Updating shopify for item sku %s new stock %d", k, v)
+		log.WithFields(log.Fields{
+			"File":   "shopify_ops",
+			"Caller": "ReconcileShopifyStockLevel",
+		}).Debugf("Updating shopify for item sku %s new stock %d", k, v)
 		payload := strings.NewReader(fmt.Sprintf("location_id=%s&inventory_item_id=%s&available=%d", loc, i, v))
 
 		httpclient := &http.Client{}
@@ -409,10 +518,16 @@ func reconcileShopifyStockLevel(storename, clientid, token string, delta StockRe
 			continue
 		}
 		if res.StatusCode != 200 {
-			log.Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+			}).Errorf("Unable to set Shopify stock level in API for %s, Got response %d", k, res.StatusCode)
 		}
 		if err = setShopifyStockLevelForVariant(storename, item.VariantID, v, client); err != nil {
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"File":   "shopify_ops",
+				"Caller": "ReconcileShopifyStockLevel",
+			}).Error(err)
 
 		}
 
