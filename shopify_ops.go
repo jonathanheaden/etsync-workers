@@ -329,7 +329,7 @@ func processproductlevels(url, storename string, client *mongo.Client) error {
 
 func reconcileShopifyStockLevel(storename, clientid, token string, delta StockReconciliationDelta, overrideStock map[string]int, client *mongo.Client) error {
 	log.Debugf("Setting Shopify stock:delta [%v] overrides [%v]",delta.ShopifyDelta, overrideStock)
-	url := "https://etsync.myshopify.com/admin/api/2020-10/inventory_levels/set.json"
+	url := fmt.Sprintf("https://%s/admin/api/2020-10/inventory_levels/set.json", storename)
 	method := "POST"
 	overridesprocessed := make(map[string]bool)
 	for k, v := range delta.ShopifyDelta {
