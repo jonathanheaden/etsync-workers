@@ -327,10 +327,10 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			vstring := fmt.Sprintf("%s: %s", pv.PropertyName, strings.Join(pv.Values, "-"))
 			vdesc = append(vdesc, vstring)
 		}
-		var stockset int
 		var skutoset string
 		var override bool
 		var setsku bool
+		stockset := p.Offerings[0].Quantity
 		if stockset, ok := overrideStock[p.Sku]; ok {
 			// If we are setting the stock then there must be an existing db record
 			// we need to set the current & previous value to the override value (in stockset)
@@ -338,9 +338,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			log.WithFields(log.Fields{
 				"File":   "db_ops",
 				"Caller": "SaveEtsyProducts",
-			}).Debugf("Set the stock level for %d to %d", p.ProductID, stockset)
-		} else {
-			stockset = p.Offerings[0].Quantity
+			}).Debugf("Override: Set the stock level for %d to %d", p.ProductID, stockset)
 		}
 
 		if s, ok := eSkusToSet[int(p.ProductID)]; ok {
@@ -353,12 +351,15 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 			}).Debugf("Overriding the sku for %d to: %s", p.ProductID, skutoset)
 		} else {
 			skutoset = p.Sku
-			log.Debug(fmt.Sprintf("Sku for %d should be %s", p.ProductID, skutoset))
+			log.WithFields(log.Fields{
+				"File":   "db_ops",
+				"Caller": "SaveEtsyProducts",
+			}).Debugf("Sku for %d should be %s", p.ProductID, skutoset)
 		}
 		log.WithFields(log.Fields{
 			"File":   "db_ops",
 			"Caller": "SaveEtsyProducts",
-		}).Debugf("Preparing update for %d with sku %s", p.ProductID, skutoset)
+		}).Debugf("Preparing update for %d with sku %s & quantity %d", p.ProductID, skutoset, stockset)
 		updateRecord := bson.M{
 			"shop_id":                 p.ShopID,
 			"e_product_title":         p.Title,
