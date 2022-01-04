@@ -330,7 +330,11 @@ func getAndSetEtsyShopListings(storename, etsy_shopid, clientid, token string, e
 		"Caller": "GetAndSetEtsyShopListings",
 	}).Debugf("Got %d shop listings back from Etsy", shoplistings.Count)
 	if err = reconcileInventoryListings(storename, etsy_shopid, clientid, token, shoplistings.Results, eSkusToSet, overrideStock, client); err != nil {
-
+		log.WithFields(log.Fields{
+			"File":   "etsy_ops",
+			"Caller": "GetAndSetEtsyShopListings",
+			"Action": "reconcile listings",
+		}).Errorf("Error with reconcile of etsy inventory: %v", err)
 	}
 	return nil
 }
