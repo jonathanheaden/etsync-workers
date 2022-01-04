@@ -404,6 +404,12 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 				updateRecord["e_sku_sync_requested"] = false
 			}
 			if !existingRecord.EtsyItemInitialised {
+				log.WithFields(log.Fields{
+					"File":           "db_ops",
+					"Caller":         "SaveEtsyProducts",
+					"etsy-ProductID": p.ProductID,
+					"Action":       "initialise etsy item",
+				}).Debugf("Record found for new etsy item [sku %s], initialising with current stock level %d", updateRecord["sku"],  stockset)
 				updateRecord["e_prev_stock"] = stockset
 				updateRecord["e_item_initialised"] = true
 			}
@@ -415,16 +421,26 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 				"File":   "db_ops",
 				"Caller": "SaveEtsyProducts",
 			}).Debug(createKeyValuePairs(updateRecord))
-			if (existingRecord.Available != existingRecord.PriorAvailable) || !override {
+			if (existingRecord.Available != existingRecord.PriorAvailable) && !override {
 				// we don't need to make changes to shopify if the stock is being overridden (those changes will be
 				// handled seperately)
+				log.WithFields(log.Fields{
+					"File":           "db_ops",
+					"Caller":         "SaveEtsyProducts",
+					"Action":       "propogate shopify changes to etsy",
+				}).Debugf("Record has changes in etsy current %d previous %d", existingRecord.Available, existingRecord.PriorAvailable)
 				stockdelta.EstyHasChanges = true
 				etsyDelta[p.ProductID] = (existingRecord.Available - existingRecord.PriorAvailable)
 			}
 
-			if (updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"]) || !override {
-				// we don't need to make changes to shopify if the stock is being overridden (those changes will be
+			if (updateRecord["e_curr_stock"] != updateRecord["e_prev_stock"]) && !override {
+				// we don't need to make changes to etsy if the stock is being overridden (those changes will be
 				// handled seperately)
+				log.WithFields(log.Fields{
+					"File":           "db_ops",
+					"Caller":         "SaveEtsyProducts",
+					"Action":       "propogate shopify changes to etsy",
+				}).Debugf("Record has changes in etsy current %d previous %d", p.Offerings[0].Quantity, existingRecord.EtsyQuantity)
 				stockdelta.ShopifyHasChanges = true
 				shopifyDelta[existingRecord.VariantID] = (p.Offerings[0].Quantity - existingRecord.EtsyQuantity)
 			}
