@@ -47,10 +47,13 @@ func main() {
 
 	defer client.Disconnect(ctx)
 
+	// Check if any stock levels are set via the app
 	overridestock, e := getOverrides(*shopname, client)
 	if e != nil {
 		log.Error(e)
 	}
+
+	// Check if any SKUs are set via the app
 	eSkusToSet, e := getItemsToLink(*shopname, client)
 	if e != nil {
 		log.Error(e)
@@ -73,8 +76,12 @@ func main() {
 			"Caller": "Main",
 		}).Infof("Etsy Items for which we need to set the sku: %v", bsku)
 	}
+
+	// Get the Shopify token
 	token := getstoretoken(*shopname, client)
 
+	//Submit the Graphql request for shopify inventory levels at location
+	//returns a url from which to download the results
 	inventoryurl, err := getinventorylevels(*shopname, token)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -88,6 +95,9 @@ func main() {
 			"Calling": "ProcessInventoryLevels",
 		}).Fatalf("Unable to process inventory levels: %v", err)
 	}
+
+	//Submit the Graphql request for shopify product variants
+	//returns a url from which to download the results
 	productsurl, err := getproductvariants(*shopname, token)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -124,6 +134,7 @@ func main() {
 	if err != nil {
 	}
 
+	//apply any shopify stock changes to etsy and etsy stock changes to shopify
 	err = getAndSetEtsyShopListings(*shopname, etsyshopid, config.ETSY_CLIENT_ID, e_token.EtsyAccessToken, eSkusToSet, overridestock, client)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -132,5 +143,4 @@ func main() {
 		}).Fatalf("Could not retrieve Etsy Listings %v", err)
 	}
 
-	//apply any etsy stock changes to shopify
 }
