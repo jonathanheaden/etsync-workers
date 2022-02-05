@@ -138,7 +138,7 @@ func getetsytoken(config Config, client *mongo.Client) (etsytoken, error) {
 func getOverrides(storename string, client *mongo.Client) (map[string]int, error) {
 
 	overrides := make(map[string]int)
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"override_stock_requested", true}}
 
@@ -174,7 +174,7 @@ func getOverrides(storename string, client *mongo.Client) (map[string]int, error
 
 func getItemsToLink(storename string, client *mongo.Client) (map[int]string, error) {
 	linkitems := make(map[int]string)
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"e_sku_sync_requested", true}}
 
@@ -210,7 +210,7 @@ func getItemsToLink(storename string, client *mongo.Client) (map[int]string, err
 
 func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (StockItem, error) {
 	var item StockItem
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 300*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
 
@@ -227,7 +227,7 @@ func getShopifyStockItem(storename, VariantId string, client *mongo.Client) (Sto
 
 func getShopifyStockItemBySku(storename, Sku string, client *mongo.Client) (StockItem, error) {
 	var item StockItem
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 300*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	filter := bson.D{{"shopify_domain", storename}, {"sku", Sku}}
 
@@ -307,7 +307,7 @@ func saveEtsyShop(storename string, etsy_shop etsyShop, client *mongo.Client) er
 // 1. a map of productid -> delta which gets applied to the Etsy API
 // 2. a map of shopify variant Ids -> delta which gets applied to Shopify API
 func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[int]string, overrideStock map[string]int, client *mongo.Client) (StockReconciliationDelta, error) {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 300*time.Second)
 	var stockdelta StockReconciliationDelta
 	if len(overrideStock) > 0 {
 		log.WithFields(log.Fields{
@@ -467,7 +467,7 @@ func saveEtsyProducts(storename string, products []etsyProduct, eSkusToSet map[i
 }
 
 func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 300*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	for _, item := range products {
 		filter := bson.M{"sku": item.Sku, "shopify_domain": storename}
@@ -492,7 +492,7 @@ func setEtsyStockLevelForProducts(storename string, products []EtsyProductUpdate
 }
 
 func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int, client *mongo.Client) error {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 300*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 
 	filter := bson.D{{"shopify_domain", storename}, {"s_variant_id", VariantId}}
@@ -517,7 +517,7 @@ func setShopifyStockLevelForVariant(storename, VariantId string, stocklevel int,
 
 func setshopstock(storename string, items []StockItem, client *mongo.Client) error {
 
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
 	stockCollection := client.Database("etsync").Collection("stock")
 	for _, item := range items {
 		var existingRecord StockItem
